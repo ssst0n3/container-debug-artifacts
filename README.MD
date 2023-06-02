@@ -13,6 +13,11 @@ Next step:
 - [ ] build container debug artifacts
 - [ ] publish these artifacts at this repo
 
+## dlv
+
+| version | link | note |
+| v1.20.2 | [dlv-v1.20.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.20.2/dlv-v1.20.2) |
+
 ## runc
 
 | version | link | note |
