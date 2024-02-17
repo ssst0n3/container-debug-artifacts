@@ -8,4 +8,4 @@ fi
 
 ./apply-patch.sh
 cd runc
-make shell
+make runcimage
