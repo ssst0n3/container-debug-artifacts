@@ -1,0 +1,30 @@
+From 10a4cde4b9c79a92475e1e875efc90a92e6e60b3 Mon Sep 17 00:00:00 2001
+From: Tibor Vass <tibor@docker.com>
+Date: Wed, 28 Feb 2018 05:23:01 +0000
+Subject: [PATCH] Fix make shell
+
+The "shell" rule in the Makefile uses docker to run a bash session,
+however it was depending on the "all" rule which assumes non-docker local
+development. This commit fixes it by making it depend on the "runcimage" rule.
+
+Signed-off-by: Tibor Vass <tibor@docker.com>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index c6de11d5..15fabff8 100644
+--- a/Makefile
++++ b/Makefile
+@@ -82,7 +82,7 @@ rootlessintegration: runcimage
+ localrootlessintegration: all
+ 	tests/rootless.sh
+ 
+-shell: all
++shell: runcimage
+ 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 
+ install:
+-- 
+2.42.0
+
