@@ -65,4 +65,5 @@ $ ./apply-patch.sh
 $ cd runc
 $ docker pull ssst0n3/runc_dev:v1.0.0-rc3
 $ make RUNC_IMAGE=ssst0n3/runc_dev:v1.0.0-rc3 shell
+root@c321134b2d68:/go/src/github.com/opencontainers/runc# 
 ```
