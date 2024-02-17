@@ -3,10 +3,7 @@
 if [[ -d "runc" ]]; then
   echo "[+] The directory 'runc' exists."
 else
-    git clone https://github.com/opencontainers/runc.git
-    cd runc
-    git checkout v1.0.0-rc3
-    cd -
+    git clone --depth 1 --branch v1.0.0-rc3 https://github.com/opencontainers/runc.git
 fi
 
 ./apply-patch.sh
