@@ -10,7 +10,7 @@ docker run  \
 	-ti --privileged --rm \
 	-v /root/research_project/container-debug-artifacts/runc/v1.0.0/runc:/go/src/github.com/opencontainers/runc \
 	runc_dev:HEAD bash
-root@50d79b8464bb:/go/src/github.com/opencontainers/runc# git config --global url."https://$GIT_MIRROR/github.com/".insteadOf "https://github.com/" # optional
+root@50d79b8464bb:/go/src/github.com/opencontainers/runc# git config --global url."https://hub.gitmirror.com/github.com/".insteadOf "https://github.com/" # optional
 root@50d79b8464bb:/go/src/github.com/opencontainers/runc# make EXTRA_FLAGS='-gcflags="all=-N -l"' static
 ```
 
@@ -24,6 +24,6 @@ $ ./apply-patch.sh
 $ cd runc
 $ docker pull ssst0n3/runc_dev:v1.0.0
 $ make RUNC_IMAGE=ssst0n3/runc_dev:v1.0.0 shell
-root@f136aafad59e:/go/src/github.com/opencontainers/runc# git config --global url."https://$GIT_MIRROR/github.com/".insteadOf "https://github.com/" # optional
+root@f136aafad59e:/go/src/github.com/opencontainers/runc# git config --global url."https://hub.gitmirror.com/github.com/".insteadOf "https://github.com/" # optional
 root@f136aafad59e:/go/src/github.com/opencontainers/runc# make EXTRA_FLAGS='-gcflags="all=-N -l"' static
 ```
