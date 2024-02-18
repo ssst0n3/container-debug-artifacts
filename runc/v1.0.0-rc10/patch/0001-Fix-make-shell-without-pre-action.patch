@@ -1,0 +1,13 @@
+diff --git a/Makefile b/Makefile
+index 81db9d9..5edf385 100644
+--- a/Makefile
++++ b/Makefile
+@@ -84,7 +84,7 @@ rootlessintegration: runcimage
+ localrootlessintegration: all
+ 	tests/rootless.sh
+ 
+-shell: runcimage
++shell: 
+ 	$(CONTAINER_ENGINE) run ${CONTAINER_ENGINE_RUN_FLAGS} -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 
+ install:
