@@ -4,38 +4,8 @@ build runc dev image and make shell
 $ git clone https://github.com/ssst0n3/container-debug-artifacts.git
 $ cd container-debug-artifacts/runc/v1.0.0-rc3/
 $ ./image.sh
-Cloning into 'runc'...
-...
-patch -p1 /root/container-debug-artifacts/runc/v1.0.0-rc3/patch/0001-Fix-make-shell.patch
-patching file Makefile
-Hunk #1 succeeded at 96 with fuzz 2 (offset 14 lines).
-patch -p1 /root/container-debug-artifacts/runc/v1.0.0-rc3/patch/0002-Fix-debian-jessie-sources-archived.patch
-patching file Dockerfile
-patch -p1 /root/container-debug-artifacts/runc/v1.0.0-rc3/patch/0003-Fix-missing-apparmor.patch
-patching file Dockerfile
-docker build -t runc_dev:HEAD .
-Sending build context to Docker daemon  2.854MB
-Step 1/15 : FROM golang:1.8.0
- ---> 2cc9519276d1
-...
-Step 15/15 : ADD . /go/src/github.com/opencontainers/runc
- ---> cdf4c51b0cab
-Successfully built cdf4c51b0cab
-Successfully tagged runc_dev:HEAD
 $ cd runc
 $ make shell
-docker build -t runc_dev:HEAD .
-Sending build context to Docker daemon  2.854MB
-Step 1/15 : FROM golang:1.8.0
- ---> 2cc9519276d1
-Step 2/15 : RUN echo 'deb http://archive.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
- ---> Using cache
-...
-Step 15/15 : ADD . /go/src/github.com/opencontainers/runc
- ---> Using cache
- ---> cdf4c51b0cab
-Successfully built cdf4c51b0cab
-Successfully tagged runc_dev:HEAD
 docker run -e TESTFLAGS -ti --privileged --rm -v /root/container-debug-artifacts/runc/v1.0.0-rc3/runc:/go/src/github.com/opencontainers/runc runc_dev:HEAD bash
 root@949a40bdad0f:/go/src/github.com/opencontainers/runc# 
 root@949a40bdad0f:/go/src/github.com/opencontainers/runc# make release
