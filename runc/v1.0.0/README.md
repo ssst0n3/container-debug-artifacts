@@ -23,5 +23,6 @@ $ ./apply-patch.sh
 $ cd runc
 $ docker pull ssst0n3/runc_dev:v1.0.0
 $ make RUNC_IMAGE=ssst0n3/runc_dev:v1.0.0 shell
+root@f136aafad59e:/go/src/github.com/opencontainers/runc# git config --global url."https://$GIT_MIRROR/github.com/".insteadOf "https://github.com/" # optional
 root@f136aafad59e:/go/src/github.com/opencontainers/runc# make EXTRA_FLAGS='-gcflags="all=-N -l"' static
 ```
