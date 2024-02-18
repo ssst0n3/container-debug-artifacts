@@ -10,6 +10,7 @@ docker run  \
 	-ti --privileged --rm \
 	-v /root/research_project/container-debug-artifacts/runc/v1.0.0/runc:/go/src/github.com/opencontainers/runc \
 	runc_dev:HEAD bash
+root@50d79b8464bb:/go/src/github.com/opencontainers/runc# git config --global url."https://$GIT_MIRROR/github.com/".insteadOf "https://github.com/" # optional
 root@50d79b8464bb:/go/src/github.com/opencontainers/runc# make EXTRA_FLAGS='-gcflags="all=-N -l"' static
 ```
 
