@@ -31,6 +31,6 @@ Next step:
 | v1.0.2 | [runc-v1.0.2-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.2-debug/runc-v1.0.2-debug) | v1.6.0~v1.9.0 |
 | v1.0.1 | [runc-v1.0.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.1-debug/runc-v1.0.1-debug) | v1.6.0~v1.9.0 |
 | v1.0.0 | [runc-v1.0.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.0-debug/runc-v1.0.0-debug) | v1.6.0~v1.9.0 |
-| v1.0.0-rc10 | [runc-v1.0.0-rc10-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.0-rc10-debug/runc-v1.0.0-rc10-debug) | |
+| v1.0.0-rc10 | [runc-v1.0.0-rc10-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.0-rc10-debug/runc-v1.0.0-rc10-debug) | ~v1.5.0 |
 | v1.0.0-rc3 | [runc-v1.0.0-rc3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.0-rc3-debug/runc-v1.0.0-rc3-debug) | |
 | v1.1.4 | [runc-v1.1.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.1.4-debug/runc-v1.1.4-debug) | |
