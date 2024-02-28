@@ -9,7 +9,7 @@ $ make shell
 root@968abdc534ad:/go/src/github.com/opencontainers/runc# make debug
 ```
 
-or use my pre-built image [ssst0n3/runc_dev:v1.0.0](https://hub.docker.com/layers/ssst0n3/runc_dev/v1.0.0/images/sha256-5c85d74df7bbdb00b84f967284c676332b9095a5ff033e0e7601bf15794c7dc0?context=explore)
+or use my pre-built image [ssst0n3/runc_dev:v1.1.0](https://hub.docker.com/layers/ssst0n3/runc_dev/v1.1.0/images/sha256-c1ce13f5183271df822017602686f199c8627f5b4512316dca6df48b1593184d?context=explore)
 
 ```
 $ git clone https://github.com/ssst0n3/container-debug-artifacts.git
