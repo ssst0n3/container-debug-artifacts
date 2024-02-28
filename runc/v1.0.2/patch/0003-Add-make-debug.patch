@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index 1ed5c3d..d661c20 100644
+--- a/Makefile
++++ b/Makefile
+@@ -101,6 +101,9 @@ shell:
+ 		-v $(CURDIR):/go/src/$(PROJECT) \
+ 		$(RUNC_IMAGE) bash
+ 
++debug:
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++
+ install:
+ 	install -D -m0755 runc $(DESTDIR)$(BINDIR)/runc
+ 
