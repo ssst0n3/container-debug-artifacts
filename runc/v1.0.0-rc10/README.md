@@ -25,6 +25,7 @@ root@c321134b2d68:/go/src/github.com/opencontainers/runc# make EXTRA_FLAGS='-gcf
 
 Goland:
 
-1. Disable gomod
-2. Clone runc to /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10/src/github.com/opencontainers/runc
-3. Add /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10/src as Project GOPATH
+1. Clone runc to /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10/src/github.com/opencontainers/runc
+2. Open /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10
+3. Disable gomod
+4. Add /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10/src as Project GOPATH
