@@ -20,6 +20,7 @@ Next step:
 | v1.20.2 | [dlv-v1.20.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.20.2/dlv-v1.20.2) |
 | v1.9.1 | [dlv-v1.9.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.9.1/dlv-v1.9.1) |
 | v1.9.0 | [dlv-v1.9.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.9.0/dlv-v1.9.0) |
+| v1.8.3 | [dlv-v1.8.3](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.8.3/dlv-v1.8.3) |
 
 ## runc
 
