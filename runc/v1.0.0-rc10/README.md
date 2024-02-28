@@ -22,3 +22,9 @@ $ docker pull ssst0n3/runc_dev:v1.0.0-rc10
 $ make RUNC_IMAGE=ssst0n3/runc_dev:v1.0.0-rc10 shell
 root@c321134b2d68:/go/src/github.com/opencontainers/runc# make EXTRA_FLAGS='-gcflags="all=-N -l"' release
 ```
+
+Goland:
+
+1. Disable gomod
+2. Clone runc to /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10/src/github.com/opencontainers/runc
+3. Add /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc10/src as Project GOPATH
