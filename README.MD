@@ -26,6 +26,7 @@ Next step:
 
 | version | binary | available dlv | note |
 | --- | --- | --- | --- |
+| v1.1.11 | [runc-v1.1.11-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.11-debug) | v1.20.0~v1.22.1 | 
 | v1.1.0 | [runc-v1.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.1.0-debug/runc-v1.1.0-debug) | v1.7.0~v1.9.1 |
 | v1.0.3 | [runc-v1.0.3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.3-debug/runc-v1.0.3-debug) | v1.6.0~v1.9.0 |
 | v1.0.2 | [runc-v1.0.2-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc-v1.0.2-debug/runc-v1.0.2-debug) | v1.6.0~v1.9.0 |
