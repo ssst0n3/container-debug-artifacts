@@ -17,10 +17,34 @@ Next step:
 
 | version | link | note |
 | --- | --- | --- |
-| v1.20.2 | [dlv-v1.20.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.20.2/dlv-v1.20.2) |
-| v1.9.1 | [dlv-v1.9.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.9.1/dlv-v1.9.1) |
-| v1.9.0 | [dlv-v1.9.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.9.0/dlv-v1.9.0) |
-| v1.8.3 | [dlv-v1.8.3](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv-v1.8.3/dlv-v1.8.3) |
+| v1.22.1 | [dlv-v1.22.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.22.1) |
+| v1.22.0 | [dlv-v1.22.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.22.0) |
+| v1.21.2 | [dlv-v1.21.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.21.2) |
+| v1.21.1 | [dlv-v1.21.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.21.1) |
+| v1.21.0 | [dlv-v1.21.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.21.0) |
+| v1.20.2 | [dlv-v1.20.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.20.2) |
+| v1.20.1 | [dlv-v1.20.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.20.1) |
+| v1.20.0 | [dlv-v1.20.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.20.0) |
+| v1.9.1 | [dlv-v1.9.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.9.1) |
+| v1.9.0 | [dlv-v1.9.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.9.0) |
+| v1.8.3 | [dlv-v1.8.3](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.8.3) |
+| v1.8.2 | [dlv-v1.8.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.8.2) |
+| v1.8.1 | [dlv-v1.8.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.8.1) |
+| v1.8.0 | [dlv-v1.8.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.8.0) |
+| v1.7.3 | [dlv-v1.7.3](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.7.3) |
+| v1.7.2 | [dlv-v1.7.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.7.2) |
+| v1.7.1 | [dlv-v1.7.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.7.1) |
+| v1.7.0 | [dlv-v1.7.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.7.0) |
+| v1.6.1 | [dlv-v1.6.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.6.1) |
+| v1.6.0 | [dlv-v1.6.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.6.0) |
+| v1.5.1 | [dlv-v1.5.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.1) |
+| v1.5.0 | [dlv-v1.5.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.0) |
+| v1.4.1 | [dlv-v1.4.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.4.1) |
+| v1.4.0 | [dlv-v1.4.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.4.0) |
+| v1.3.2 | [dlv-v1.3.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.3.2) |
+| v1.3.1 | [dlv-v1.3.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.3.1) |
+| v1.3.0 | [dlv-v1.3.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.3.0) |
+| v1.2.0 | [dlv-v1.2.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.2.0) |
 
 ## runc
 
