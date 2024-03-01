@@ -65,3 +65,4 @@ Next step:
 | v1.0.0-rc10 | [runc-v1.0.0-rc10-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc10-debug) | ~v1.5.0 |
 |             | [runc-v1.0.0-rc10-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc10-debug-auto-wait-tracing) | ~v1.5.0 |
 | v1.0.0-rc3 | [runc-v1.0.0-rc3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc3-debug) | * |
+|            | [runc-v1.0.0-rc3-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc3-debug-auto-wait-tracing) | * |
