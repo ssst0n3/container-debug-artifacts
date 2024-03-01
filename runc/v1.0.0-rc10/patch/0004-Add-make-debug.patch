@@ -1,14 +1,70 @@
 diff --git a/Makefile b/Makefile
-index 1ed5c3d..d661c20 100644
+index 7ce26c6..e424632 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -101,6 +101,9 @@ shell:
+@@ -136,6 +136,14 @@ shell:
  		-v $(CURDIR):/go/src/$(PROJECT) \
  		$(RUNC_IMAGE) bash
  
 +debug:
++	mv debug-trace.go* debug-trace.go.bak
 +	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.0.0-rc10-debug
++	mv debug-trace.go.bak debug-trace.go
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.0.0-rc10-debug-auto-wait-tracing
 +
  install:
  	install -D -m0755 runc $(DESTDIR)$(BINDIR)/runc
  
+diff --git a/debug-trace.go b/debug-trace.go
+new file mode 100644
+index 0000000..ca6cccb
+--- /dev/null
++++ b/debug-trace.go
+@@ -0,0 +1,45 @@
++package main
++
++import (
++	"bufio"
++	"os"
++	"strings"
++	"time"
++)
++
++func isBeingTraced() (tracing bool) {
++	file, err := os.Open("/proc/self/status")
++	if err != nil {
++		panic(err)
++	}
++	defer file.Close()
++
++	scanner := bufio.NewScanner(file)
++	for scanner.Scan() {
++		line := scanner.Text()
++		if strings.HasPrefix(line, "TracerPid:") {
++			tracerPidInfo := strings.Fields(line)
++			if len(tracerPidInfo) == 2 && tracerPidInfo[1] != "0" {
++				return true
++			}
++			break
++		}
++	}
++
++	if err := scanner.Err(); err != nil {
++		panic(err)
++	}
++
++	return
++}
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		for {
++			if isBeingTraced() {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
