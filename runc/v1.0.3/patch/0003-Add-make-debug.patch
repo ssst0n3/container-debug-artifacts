@@ -7,7 +7,7 @@ index 7ce26c6..e424632 100644
  		$(RUNC_IMAGE) bash
  
 +debug:
-+	mv debug-trace.go* debug-trace.go.bak
++	mv debug-trace.go debug-trace.go.bak || echo ""
 +	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
 +	mv runc runc-v1.0.3-debug
 +	mv debug-trace.go.bak debug-trace.go
