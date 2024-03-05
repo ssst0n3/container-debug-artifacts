@@ -7,11 +7,11 @@ index 7ce26c6..e424632 100644
  		$(RUNC_IMAGE) bash
  
 +debug:
-+	mv debug-trace.go* debug-trace.go.bak
-+	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv debug-trace.go debug-trace.go.bak || echo ""
++	make static BUILDTAGS="seccomp selinux apparmor static"
 +	mv runc runc-v1.0.0-rc3-debug
-+	mv debug-trace.go.bak debug-trace.go
-+	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv debug-trace.go.bak debug-trace.go || echo ""
++	make static BUILDTAGS="seccomp selinux apparmor static"
 +	mv runc runc-v1.0.0-rc3-debug-auto-wait-tracing
 +
  install:
