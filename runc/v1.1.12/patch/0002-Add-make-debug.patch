@@ -9,10 +9,10 @@ index 7ce26c6..e424632 100644
 +debug:
 +	mv debug-trace.go debug-trace.go.bak || echo ""
 +	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
-+	mv runc runc-v1.1.11-debug
++	mv runc runc-v1.1.12-debug
 +	mv debug-trace.go.bak debug-trace.go
 +	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
-+	mv runc runc-v1.1.11-debug-auto-wait-tracing
++	mv runc runc-v1.1.12-debug-auto-wait-tracing
 +
  install:
  	install -D -m0755 runc $(DESTDIR)$(BINDIR)/runc
