@@ -53,7 +53,9 @@ Next step:
 | [v1.1.12](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.12) | [runc-v1.1.12-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.12-debug) | v1.20.0~v1.22.1 | 
 |         | [runc-v1.1.12-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.12-debug-auto-wait-tracing) | v1.20.0~v1.22.1 | 
 | [v1.1.11](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.11) | [runc-v1.1.11-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.11-debug) | v1.20.0~v1.22.1 | 
-|         | [runc-v1.1.11-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.11-debug-auto-wait-tracing) | v1.20.0~v1.22.1 | 
+|         | [runc-v1.1.11-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.11-debug-auto-wait-tracing) | v1.20.0~v1.22.1 |
+| [v1.1.10](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.10) | [runc-v1.1.10-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.10-debug) | v1.20.0~v1.22.1 | 
+|         | [runc-v1.1.10-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.10-debug-auto-wait-tracing) | v1.20.0~v1.22.1 | 
 | [v1.1.0](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.0) | [runc-v1.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-debug) | v1.7.0~v1.9.1 |
 |        | [runc-v1.1.0-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-debug-auto-wait-tracing) | v1.7.0~v1.9.1 |
 | [v1.0.3](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.3) | [runc-v1.0.3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.3-debug) | v1.6.0~v1.9.0 |
