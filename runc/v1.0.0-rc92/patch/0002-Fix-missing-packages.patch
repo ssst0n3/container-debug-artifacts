@@ -26,7 +26,6 @@ index f5ce90c..cc76adb 100644
          libseccomp2 \
          pkg-config \
          python-minimal \
--        skopeo \
          sudo \
          uidmap \
      && apt-get clean \
