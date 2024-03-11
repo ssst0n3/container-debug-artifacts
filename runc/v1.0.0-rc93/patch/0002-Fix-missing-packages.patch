@@ -1,0 +1,28 @@
+diff --git a/Dockerfile b/Dockerfile
+index 2266903..632d01c 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,12 +12,11 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
+     && dpkg --add-architecture ppc64el \
+     && apt-get update \
+     && apt-get install -y --no-install-recommends \
++        gperf \
+         build-essential \
+         criu \
+         crossbuild-essential-arm64 \
+-        crossbuild-essential-armel \
+         crossbuild-essential-armhf \
+-        crossbuild-essential-ppc64el \
+         curl \
+         gawk \
+         gcc \
+@@ -26,9 +25,7 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
+         kmod \
+         libseccomp-dev \
+         libseccomp-dev:arm64 \
+-        libseccomp-dev:armel \
+         libseccomp-dev:armhf \
+-        libseccomp-dev:ppc64el \
+         libseccomp2 \
+         pkg-config \
+         python-minimal \
