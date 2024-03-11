@@ -1,8 +1,8 @@
 diff --git a/Dockerfile b/Dockerfile
-index 2266903..632d01c 100644
+index f5ce90c..cc76adb 100644
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -12,12 +12,11 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
+@@ -15,12 +15,11 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
      && dpkg --add-architecture ppc64el \
      && apt-get update \
      && apt-get install -y --no-install-recommends \
@@ -16,7 +16,7 @@ index 2266903..632d01c 100644
          curl \
          gawk \
          gcc \
-@@ -26,9 +25,7 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
+@@ -29,13 +28,10 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
          kmod \
          libseccomp-dev \
          libseccomp-dev:arm64 \
@@ -26,3 +26,7 @@ index 2266903..632d01c 100644
          libseccomp2 \
          pkg-config \
          python-minimal \
+-        skopeo \
+         sudo \
+         uidmap \
+     && apt-get clean \
