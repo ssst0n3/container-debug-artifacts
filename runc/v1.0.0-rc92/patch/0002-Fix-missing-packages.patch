@@ -1,23 +1,19 @@
 diff --git a/Dockerfile b/Dockerfile
-index f5ce90c..cc76adb 100644
+index 2fffb61..3079c1c 100644
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -15,12 +15,11 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
-     && dpkg --add-architecture ppc64el \
-     && apt-get update \
+@@ -13,9 +13,7 @@ RUN dpkg --add-architecture armel \
      && apt-get install -y --no-install-recommends \
-+        gperf \
          build-essential \
-         criu \
          crossbuild-essential-arm64 \
 -        crossbuild-essential-armel \
          crossbuild-essential-armhf \
 -        crossbuild-essential-ppc64el \
          curl \
          gawk \
-         gcc \
-@@ -29,13 +28,10 @@ RUN echo 'deb https://download.opensuse.org/repositories/devel:/tools:/criu/Debi
-         kmod \
+         iptables \
+@@ -29,9 +27,7 @@ RUN dpkg --add-architecture armel \
+         libprotobuf-dev \
          libseccomp-dev \
          libseccomp-dev:arm64 \
 -        libseccomp-dev:armel \
@@ -25,7 +21,4 @@ index f5ce90c..cc76adb 100644
 -        libseccomp-dev:ppc64el \
          libseccomp2 \
          pkg-config \
-         python-minimal \
-         sudo \
-         uidmap \
-     && apt-get clean \
+         protobuf-c-compiler \
