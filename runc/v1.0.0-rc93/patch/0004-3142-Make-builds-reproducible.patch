@@ -24,28 +24,4 @@ index 4c73e6ab756..efbddf0d215 100644
 -	-ldflags "-w -extldflags -static -X main.gitCommit=$(COMMIT) -X main.version=$(VERSION) $(EXTRA_LDFLAGS)"
 +	-ldflags "-extldflags -static -X main.gitCommit=$(COMMIT) -X main.version=$(VERSION) $(EXTRA_LDFLAGS)"
  
- .DEFAULT: runc
- 
-diff --git a/script/release.sh b/script/release.sh
-index b04fe0091b8..b9d893bf7a2 100755
---- a/script/release.sh
-+++ b/script/release.sh
-@@ -43,11 +43,17 @@ function build_project() {
- 	)
- 	mv "$tarball"{,.asc} "$builddir"
- 
-+	# For reproducible builds, add these to EXTRA_LDFLAGS:
-+	#  -w to disable DWARF generation;
-+	#  -s to disable symbol table;
-+	#  -buildid= to remove variable build id.
-+	local ldflags="-w -s -buildid="
- 	# Add -a to go build flags to make sure it links against
- 	# the provided libseccomp, not the system one (otherwise
- 	# it can reuse cached pkg-config results).
--	make -C "$root" PKG_CONFIG_PATH="${prefix}/lib/pkgconfig" COMMIT_NO= EXTRA_FLAGS="-a" static
-+	make -C "$root" PKG_CONFIG_PATH="${prefix}/lib/pkgconfig" COMMIT_NO= EXTRA_FLAGS="-a" EXTRA_LDFLAGS="${ldflags}" static
- 	rm -rf "$prefix"
-+	strip "$root/$project"
- 	mv "$root/$project" "$1"
- }
- 
+ .DEFAULT: runc 
