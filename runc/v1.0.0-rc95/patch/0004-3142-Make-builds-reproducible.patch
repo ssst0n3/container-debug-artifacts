@@ -1,0 +1,51 @@
+From e2e5267ceeb4f470f9b02034b95660e44e92d0f6 Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Tue, 10 Aug 2021 10:52:39 -0700
+Subject: [PATCH] [1.0] script/release.sh: make builds reproducible
+
+This is a manual backport of commits 61e201abb2d5e4c and
+18f434e10a7ebb4a to release-1.0 branch.
+
+Co-authored-by: Kailun Qin <kailun.qin@intel.com>
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ Makefile          | 2 +-
+ script/release.sh | 8 +++++++-
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 4c73e6ab756..efbddf0d215 100644
+--- a/Makefile
++++ b/Makefile
+@@ -27,7 +27,7 @@ endif
+ GO_BUILD := $(GO) build -trimpath $(MOD_VENDOR) $(GO_BUILDMODE) $(EXTRA_FLAGS) -tags "$(BUILDTAGS)" \
+ 	-ldflags "-X main.gitCommit=$(COMMIT) -X main.version=$(VERSION) $(EXTRA_LDFLAGS)"
+ GO_BUILD_STATIC := CGO_ENABLED=1 $(GO) build -trimpath $(MOD_VENDOR) $(EXTRA_FLAGS) -tags "$(BUILDTAGS) netgo osusergo" \
+-	-ldflags "-w -extldflags -static -X main.gitCommit=$(COMMIT) -X main.version=$(VERSION) $(EXTRA_LDFLAGS)"
++	-ldflags "-extldflags -static -X main.gitCommit=$(COMMIT) -X main.version=$(VERSION) $(EXTRA_LDFLAGS)"
+ 
+ .DEFAULT: runc
+ 
+diff --git a/script/release.sh b/script/release.sh
+index b04fe0091b8..b9d893bf7a2 100755
+--- a/script/release.sh
++++ b/script/release.sh
+@@ -43,11 +43,17 @@ function build_project() {
+ 	)
+ 	mv "$tarball"{,.asc} "$builddir"
+ 
++	# For reproducible builds, add these to EXTRA_LDFLAGS:
++	#  -w to disable DWARF generation;
++	#  -s to disable symbol table;
++	#  -buildid= to remove variable build id.
++	local ldflags="-w -s -buildid="
+ 	# Add -a to go build flags to make sure it links against
+ 	# the provided libseccomp, not the system one (otherwise
+ 	# it can reuse cached pkg-config results).
+-	make -C "$root" PKG_CONFIG_PATH="${prefix}/lib/pkgconfig" COMMIT_NO= EXTRA_FLAGS="-a" static
++	make -C "$root" PKG_CONFIG_PATH="${prefix}/lib/pkgconfig" COMMIT_NO= EXTRA_FLAGS="-a" EXTRA_LDFLAGS="${ldflags}" static
+ 	rm -rf "$prefix"
++	strip "$root/$project"
+ 	mv "$root/$project" "$1"
+ }
+ 
