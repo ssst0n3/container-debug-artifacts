@@ -1,12 +1,15 @@
 diff --git a/Dockerfile b/Dockerfile
-index d5d75f8..78cf0e0 100644
+index f5ce90c..41acaf4 100644
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -65,5 +65,5 @@ ENTRYPOINT ["/tmpmount"]
- 
- ADD . /go/src/github.com/opencontainers/runc
- 
+@@ -67,8 +67,8 @@ WORKDIR /go/src/github.com/opencontainers/runc
+ COPY tests/integration/multi-arch.bash tests/integration/
+ ENV ROOTFS /busybox
+ RUN mkdir -p "${ROOTFS}"
 -RUN . tests/integration/multi-arch.bash \
 -    && curl -fsSL `get_busybox` | tar xfJC - "${ROOTFS}"
 +# RUN . tests/integration/multi-arch.bash \
-+#    && curl -fsSL `get_busybox` | tar xfJC - "${ROOTFS}"
++#     && curl -fsSL `get_busybox` | tar xfJC - "${ROOTFS}"
+ 
+ ENV DEBIAN_ROOTFS /debian
+ RUN mkdir -p "${DEBIAN_ROOTFS}"
