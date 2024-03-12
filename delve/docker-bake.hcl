@@ -6,6 +6,10 @@ variable "GOPROXY" {
   default = "direct"
 }
 
+variable "GIT_MIRROR" {
+  default = ""
+}
+
 group "default" {
   targets = ["binary"]
 }
@@ -14,6 +18,7 @@ target "_common" {
   args = {
     DELVE_VERSION = DELVE_VERSION
     GOPROXY = GOPROXY
+    GIT_MIRROR = GIT_MIRROR
   }
 }
 
