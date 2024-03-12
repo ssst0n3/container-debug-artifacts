@@ -8,7 +8,7 @@ index c971448c..d35e08dc 100644
  # libseccomp in jessie is not _quite_ new enough -- need backports version
 -RUN echo 'deb http://httpredir.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
 +RUN echo 'deb http://archive.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
-+RUN sed -i s/deb.debian.org/archive.debian.org/g /etc/apt/sources.list
++RUN sed -i s/httpredir.debian.org/archive.debian.org/g /etc/apt/sources.list
 +RUN sed -i s/security.debian.org/archive.debian.org/g /etc/apt/sources.list
  
 -RUN apt-get update && apt-get install -y \
