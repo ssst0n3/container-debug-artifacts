@@ -8,10 +8,10 @@ index 7ce26c6..e424632 100644
  
 +debug:
 +	mv debug-trace.go debug-trace.go.bak || echo ""
-+	make static BUILDTAGS="seccomp selinux apparmor static"
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-l"'
 +	mv runc runc-v1.0.0-rc3-debug
 +	mv debug-trace.go.bak debug-trace.go
-+	make static BUILDTAGS="seccomp selinux apparmor static"
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-l"'
 +	mv runc runc-v1.0.0-rc3-debug-auto-wait-tracing
 +
  install:
