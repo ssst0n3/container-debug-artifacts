@@ -1,0 +1,24 @@
+diff --git a/Makefile b/Makefile
+index 6781ac7..6fa8c67 100644
+--- a/Makefile
++++ b/Makefile
+@@ -37,8 +37,8 @@ contrib/cmd/recvtty/recvtty: $(SOURCES)
+ 	go build -i $(EXTRA_FLAGS) -ldflags "-X main.gitCommit=${COMMIT} -X main.version=${VERSION} $(EXTRA_LDFLAGS)" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
+ static: $(SOURCES)
+-	CGO_ENABLED=1 go build -i $(EXTRA_FLAGS) -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION} $(EXTRA_LDFLAGS)" -o runc .
+-	CGO_ENABLED=1 go build -i $(EXTRA_FLAGS) -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION} $(EXTRA_LDFLAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
++	CGO_ENABLED=1 go build -i $(EXTRA_FLAGS) -tags "$(BUILDTAGS) cgo static_build" -ldflags "-extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION} $(EXTRA_LDFLAGS)" -o runc .
++	CGO_ENABLED=1 go build -i $(EXTRA_FLAGS) -tags "$(BUILDTAGS) cgo static_build" -ldflags "-extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION} $(EXTRA_LDFLAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
+ release:
+ 	@flag_list=(seccomp selinux apparmor static); \
+@@ -58,7 +58,7 @@ release:
+ 		[[ "$$profile" =~ static ]] && { \
+ 			tags="$${tags/static/static_build}"; \
+ 			tags+=" cgo"; \
+-			ldflags+=" -w -extldflags -static"; \
++			ldflags+="-extldflags -static"; \
+ 			CGO_ENABLED=1; \
+ 		}; \
+ 		echo "Building target: $$output"; \

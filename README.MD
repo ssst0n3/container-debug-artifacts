@@ -112,5 +112,7 @@ Next step:
 |             | [runc-v1.0.0-rc6-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc6-debug-auto-wait-tracing) | v1.1.0~v1.3.1 |
 | [v1.0.0-rc5](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc5) | [runc-v1.0.0-rc5-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc5-debug) | v1.1.0~v1.3.1 |
 |             | [runc-v1.0.0-rc5-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc5-debug-auto-wait-tracing) | v1.1.0~ |
+| [v1.0.0-rc4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc4) | [runc-v1.0.0-rc4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc4-debug) | v1.1.0~v1.3.1 |
+|             | [runc-v1.0.0-rc4-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc4-debug-auto-wait-tracing) | v1.1.0~ |
 | [v1.0.0-rc3](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc3) | [runc-v1.0.0-rc3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc3-debug) | * |
 |            | [runc-v1.0.0-rc3-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc3-debug-auto-wait-tracing) | * |
