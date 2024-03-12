@@ -45,6 +45,8 @@ Next step:
 | v1.3.1 | [dlv-v1.3.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.3.1) |
 | v1.3.0 | [dlv-v1.3.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.3.0) |
 | v1.2.0 | [dlv-v1.2.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.2.0) |
+| v1.1.0 | [dlv-v1.2.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.1.0) |
+| v1.0.0 | [dlv-v1.2.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.0.0) |
 
 ## runc
 
@@ -92,10 +94,8 @@ Next step:
 |        | [runc-v1.0.0-rc94-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc94-debug-auto-wait-tracing) | v1.5.0~v1.7.3 |
 | [v1.0.0-rc93](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc93) | [runc-v1.0.0-rc93-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc93-debug) | v1.5.0~v1.7.3 |
 |        | [runc-v1.0.0-rc93-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc93-debug-auto-wait-tracing) | v1.5.0~v1.7.3 |
-
-| [v1.0.0-rc92](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc92) | [runc-v1.0.0-rc92-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc92-debug) | v1.5.0~v1.7.3 |
-|        | [runc-v1.0.0-rc92-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc92-debug-auto-wait-tracing) | v1.5.0~v1.7.3 |
-
+| [v1.0.0-rc92](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc92) | [runc-v1.0.0-rc92-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc92-debug) | v1.1.0~v1.6.0 |
+|        | [runc-v1.0.0-rc92-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc92-debug-auto-wait-tracing) | v1.1.0~v1.6.0 |
 | [v1.0.0-rc10](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc10) | [runc-v1.0.0-rc10-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc10-debug) | ~v1.5.0 |
 |             | [runc-v1.0.0-rc10-debug-auto-wait-tracing](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc10-debug-auto-wait-tracing) | ~v1.5.0 |
 | [v1.0.0-rc3](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.0.0-rc3) | [runc-v1.0.0-rc3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.0.0-rc3-debug) | * |
