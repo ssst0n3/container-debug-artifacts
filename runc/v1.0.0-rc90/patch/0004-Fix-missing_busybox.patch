@@ -1,0 +1,12 @@
+diff --git a/Dockerfile b/Dockerfile
+index 5c65470..b80afc3 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -62,5 +62,5 @@ ENTRYPOINT ["/tmpmount"]
+ 
+ ADD . /go/src/github.com/opencontainers/runc
+ 
+-RUN . tests/integration/multi-arch.bash \
+-    && curl -o- -sSL `get_busybox` | tar xfJC - ${ROOTFS}
++# RUN . tests/integration/multi-arch.bash \
++#     && curl -o- -sSL `get_busybox` | tar xfJC - ${ROOTFS}
