@@ -1,0 +1,40 @@
+diff --git a/Dockerfile b/Dockerfile
+index 2fffb61..0d7662e 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -13,9 +13,7 @@ RUN dpkg --add-architecture armel \
+     && apt-get install -y --no-install-recommends \
+         build-essential \
+         crossbuild-essential-arm64 \
+-        crossbuild-essential-armel \
+         crossbuild-essential-armhf \
+-        crossbuild-essential-ppc64el \
+         curl \
+         gawk \
+         iptables \
+@@ -29,9 +27,7 @@ RUN dpkg --add-architecture armel \
+         libprotobuf-dev \
+         libseccomp-dev \
+         libseccomp-dev:arm64 \
+-        libseccomp-dev:armel \
+         libseccomp-dev:armhf \
+-        libseccomp-dev:ppc64el \
+         libseccomp2 \
+         pkg-config \
+         protobuf-c-compiler \
+@@ -67,15 +63,6 @@ RUN mkdir -p /usr/src/criu \
+     && cd - \
+     && rm -rf /usr/src/criu
+ 
+-# install skopeo
+-RUN echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/Debian_Unstable/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
+-    && wget -nv https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable/Debian_Unstable/Release.key -O- | sudo apt-key add - \
+-    && apt-get update \
+-    && apt-get install -y --no-install-recommends skopeo \
+-    && rm -rf /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
+-    && apt-get clean \
+-    && rm -rf /var/cache/apt /var/lib/apt/lists/*;
+-
+ # install umoci
+ RUN curl -o /usr/local/bin/umoci -fsSL https://github.com/opencontainers/umoci/releases/download/v0.4.5/umoci.amd64 \
+     && chmod +x /usr/local/bin/umoci
