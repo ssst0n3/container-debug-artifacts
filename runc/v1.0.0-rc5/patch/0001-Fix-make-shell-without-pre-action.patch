@@ -1,13 +1,13 @@
 diff --git a/Makefile b/Makefile
-index c60f823..cff5a24 100644
+index c6de11d..9834c37 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -83,7 +83,7 @@ rootlessintegration: runcimage
+@@ -82,7 +82,7 @@ rootlessintegration: runcimage
  localrootlessintegration: all
  	tests/rootless.sh
  
--shell: runcimage
+-shell: all
 +shell: 
- 	docker run ${DOCKER_RUN_PROXY} -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
  
  install:
