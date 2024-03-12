@@ -8,7 +8,6 @@ FROM ${GOLANG_IMAGE} AS base
 ARG GIT_MIRROR
 RUN git config --global --add safe.directory /root/app
 RUN git config --global url."https://$GIT_MIRROR/github.com/".insteadOf "https://github.com/"
-RUN git config --global -l 
 COPY install.sh /
 
 FROM base AS delve
