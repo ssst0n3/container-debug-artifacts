@@ -1,0 +1,20 @@
+diff --git a/Makefile b/Makefile
+index 9b72ed6..e46847e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,4 +1,4 @@
+-.PHONY: dbuild man \
++.PHONY: shell dbuild man \
+ 	    localtest localunittest localintegration \
+ 	    test unittest integration
+ 
+@@ -92,6 +92,9 @@ integration: runcimage
+ localintegration: all
+ 	bats -t tests/integration${TESTFLAGS}
+ 
++shell:
++	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
++
+ install:
+ 	install -D -m0755 runc $(BINDIR)/runc
+ 
