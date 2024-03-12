@@ -21,3 +21,10 @@ $ docker pull ssst0n3/runc_dev:v1.0.0-rc90
 $ make RUNC_IMAGE=ssst0n3/runc_dev:v1.0.0-rc90 shell
 root@f136aafad59e:/go/src/github.com/opencontainers/runc# make debug
 ```
+
+Goland:
+
+1. Clone runc to /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc90/src/github.com/opencontainers/runc
+2. Open /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc90
+3. Disable gomod
+4. Add /home/st0n3/research_project/opencontainers/runc-v1.0.0-rc90/src as Project GOPATH
