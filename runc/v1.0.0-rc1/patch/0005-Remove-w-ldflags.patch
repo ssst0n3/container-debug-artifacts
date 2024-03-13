@@ -1,22 +1,13 @@
 diff --git a/Makefile b/Makefile
-index 9b72ed6..ba850e0 100644
+index 0852c71..a0bc402 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -30,7 +30,7 @@ all: $(RUNC_LINK)
+@@ -26,7 +26,7 @@ all: $(RUNC_LINK)
  	go build -i -ldflags "-X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o runc .
  
  static: $(RUNC_LINK)
 -	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
 +	CGO_ENABLED=1 go build -i $(EXTRA_FLAGS) -tags "$(BUILDTAGS) cgo static_build" -ldflags "-extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
  
- release: $(RUNC_LINK)
- 	@flag_list=(seccomp selinux apparmor static); \
-@@ -50,7 +50,7 @@ release: $(RUNC_LINK)
- 		[[ "$$profile" =~ static ]] && { \
- 			tags="$${tags/static/static_build}"; \
- 			tags+=" cgo"; \
--			ldflags+=" -w -extldflags -static"; \
-+			ldflags+=" -extldflags -static"; \
- 			CGO_ENABLED=1; \
- 		}; \
- 		echo "Building target: $$output"; \
+ $(RUNC_LINK):
+ 	ln -sfn $(CURDIR) $(RUNC_LINK)

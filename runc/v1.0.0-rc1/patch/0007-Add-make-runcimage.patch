@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index 0852c71..15342c4 100644
+--- a/Makefile
++++ b/Makefile
+@@ -47,6 +47,9 @@ man:
+ runctestimage:
+ 	docker build -t $(RUNC_TEST_IMAGE) -f $(TEST_DOCKERFILE) .
+ 
++runcimage:
++	docker build -t $(RUNC_IMAGE) .
++
+ test:
+ 	make unittest integration
+ 
