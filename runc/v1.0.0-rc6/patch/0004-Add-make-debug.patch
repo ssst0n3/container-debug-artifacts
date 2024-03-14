@@ -8,10 +8,10 @@ index 7ce26c6..e424632 100644
  
 +debug:
 +	mv debug-flag.go debug-flag.go.bak || echo ""
-+	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	make static EXTRA_FLAGS='-gcflags="all=-N -l"' BUILDTAGS="seccomp selinux apparmor static"
 +	mv runc runc-v1.0.0-rc6-debug
 +	mv debug-flag.go.bak debug-flag.go
-+	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	make static EXTRA_FLAGS='-gcflags="all=-N -l"' BUILDTAGS="seccomp selinux apparmor static"
 +	mv runc runc-v1.0.0-rc6-debug-flag
 +
  install:
