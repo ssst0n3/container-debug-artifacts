@@ -1,0 +1,2424 @@
+From d9ba1ae8b4ce5099b857f50dc2393bf90921be44 Mon Sep 17 00:00:00 2001
+From: Qiang Huang <h.huangqiang@huawei.com>
+Date: Thu, 23 Mar 2017 08:21:19 +0800
+Subject: [PATCH 03/94] Use opencontainers/selinux package
+
+It's splitted as a separate project.
+
+Change-Id: Iaac4fde7a9cfd95695afe2654ca59f68469f7872
+Signed-off-by: Qiang Huang <h.huangqiang@huawei.com>
+---
+ libcontainer/configs/validate/validator.go         |   4 +-
+ libcontainer/label/label.go                        |  84 ---
+ libcontainer/label/label_selinux.go                | 204 -------
+ libcontainer/label/label_selinux_test.go           | 148 -----
+ libcontainer/rootfs_linux.go                       |   2 +-
+ libcontainer/selinux/selinux.go                    | 549 -------------------
+ libcontainer/selinux/selinux_test.go               |  85 ---
+ libcontainer/setns_init_linux.go                   |   2 +-
+ libcontainer/standard_init_linux.go                |   2 +-
+ vendor.conf                                        |   1 +
+ vendor/github.com/opencontainers/selinux/LICENSE   | 201 +++++++
+ vendor/github.com/opencontainers/selinux/README.md |   7 +
+ .../selinux/go-selinux/label/label.go              |  84 +++
+ .../selinux/go-selinux/label/label_selinux.go      | 204 +++++++
+ .../opencontainers/selinux/go-selinux/selinux.go   | 593 +++++++++++++++++++++
+ .../opencontainers/selinux/go-selinux/xattrs.go    |  78 +++
+ 16 files changed, 1173 insertions(+), 1075 deletions(-)
+ delete mode 100644 libcontainer/label/label.go
+ delete mode 100644 libcontainer/label/label_selinux.go
+ delete mode 100644 libcontainer/label/label_selinux_test.go
+ delete mode 100644 libcontainer/selinux/selinux.go
+ delete mode 100644 libcontainer/selinux/selinux_test.go
+ create mode 100644 vendor/github.com/opencontainers/selinux/LICENSE
+ create mode 100644 vendor/github.com/opencontainers/selinux/README.md
+ create mode 100644 vendor/github.com/opencontainers/selinux/go-selinux/label/label.go
+ create mode 100644 vendor/github.com/opencontainers/selinux/go-selinux/label/label_selinux.go
+ create mode 100644 vendor/github.com/opencontainers/selinux/go-selinux/selinux.go
+ create mode 100644 vendor/github.com/opencontainers/selinux/go-selinux/xattrs.go
+
+diff --git a/libcontainer/configs/validate/validator.go b/libcontainer/configs/validate/validator.go
+index f076f50..ecf8335 100644
+--- a/libcontainer/configs/validate/validator.go
++++ b/libcontainer/configs/validate/validator.go
+@@ -7,7 +7,7 @@ import (
+ 	"strings"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+-	"github.com/opencontainers/runc/libcontainer/selinux"
++	selinux "github.com/opencontainers/selinux/go-selinux"
+ )
+ 
+ type Validator interface {
+@@ -87,7 +87,7 @@ func (v *ConfigValidator) security(config *configs.Config) error {
+ 		!config.Namespaces.Contains(configs.NEWNS) {
+ 		return fmt.Errorf("unable to restrict sys entries without a private MNT namespace")
+ 	}
+-	if config.ProcessLabel != "" && !selinux.SelinuxEnabled() {
++	if config.ProcessLabel != "" && !selinux.GetEnabled() {
+ 		return fmt.Errorf("selinux label is specified in config, but selinux is disabled or not supported")
+ 	}
+ 
+diff --git a/libcontainer/label/label.go b/libcontainer/label/label.go
+deleted file mode 100644
+index fddec46..0000000
+--- a/libcontainer/label/label.go
++++ /dev/null
+@@ -1,84 +0,0 @@
+-// +build !selinux !linux
+-
+-package label
+-
+-// InitLabels returns the process label and file labels to be used within
+-// the container.  A list of options can be passed into this function to alter
+-// the labels.
+-func InitLabels(options []string) (string, string, error) {
+-	return "", "", nil
+-}
+-
+-func GetROMountLabel() string {
+-	return ""
+-}
+-
+-func GenLabels(options string) (string, string, error) {
+-	return "", "", nil
+-}
+-
+-func FormatMountLabel(src string, mountLabel string) string {
+-	return src
+-}
+-
+-func SetProcessLabel(processLabel string) error {
+-	return nil
+-}
+-
+-func GetFileLabel(path string) (string, error) {
+-	return "", nil
+-}
+-
+-func SetFileLabel(path string, fileLabel string) error {
+-	return nil
+-}
+-
+-func SetFileCreateLabel(fileLabel string) error {
+-	return nil
+-}
+-
+-func Relabel(path string, fileLabel string, shared bool) error {
+-	return nil
+-}
+-
+-func GetPidLabel(pid int) (string, error) {
+-	return "", nil
+-}
+-
+-func Init() {
+-}
+-
+-func ReserveLabel(label string) error {
+-	return nil
+-}
+-
+-func UnreserveLabel(label string) error {
+-	return nil
+-}
+-
+-// DupSecOpt takes a process label and returns security options that
+-// can be used to set duplicate labels on future container processes
+-func DupSecOpt(src string) []string {
+-	return nil
+-}
+-
+-// DisableSecOpt returns a security opt that can disable labeling
+-// support for future container processes
+-func DisableSecOpt() []string {
+-	return nil
+-}
+-
+-// Validate checks that the label does not include unexpected options
+-func Validate(label string) error {
+-	return nil
+-}
+-
+-// RelabelNeeded checks whether the user requested a relabel
+-func RelabelNeeded(label string) bool {
+-	return false
+-}
+-
+-// IsShared checks that the label includes a "shared" mark
+-func IsShared(label string) bool {
+-	return false
+-}
+diff --git a/libcontainer/label/label_selinux.go b/libcontainer/label/label_selinux.go
+deleted file mode 100644
+index 058c922..0000000
+--- a/libcontainer/label/label_selinux.go
++++ /dev/null
+@@ -1,204 +0,0 @@
+-// +build selinux,linux
+-
+-package label
+-
+-import (
+-	"fmt"
+-	"strings"
+-
+-	"github.com/opencontainers/runc/libcontainer/selinux"
+-)
+-
+-// Valid Label Options
+-var validOptions = map[string]bool{
+-	"disable": true,
+-	"type":    true,
+-	"user":    true,
+-	"role":    true,
+-	"level":   true,
+-}
+-
+-var ErrIncompatibleLabel = fmt.Errorf("Bad SELinux option z and Z can not be used together")
+-
+-// InitLabels returns the process label and file labels to be used within
+-// the container.  A list of options can be passed into this function to alter
+-// the labels.  The labels returned will include a random MCS String, that is
+-// guaranteed to be unique.
+-func InitLabels(options []string) (string, string, error) {
+-	if !selinux.SelinuxEnabled() {
+-		return "", "", nil
+-	}
+-	processLabel, mountLabel := selinux.GetLxcContexts()
+-	if processLabel != "" {
+-		pcon := selinux.NewContext(processLabel)
+-		mcon := selinux.NewContext(mountLabel)
+-		for _, opt := range options {
+-			if opt == "disable" {
+-				return "", "", nil
+-			}
+-			if i := strings.Index(opt, ":"); i == -1 {
+-				return "", "", fmt.Errorf("Bad label option %q, valid options 'disable' or \n'user, role, level, type' followed by ':' and a value", opt)
+-			}
+-			con := strings.SplitN(opt, ":", 2)
+-			if !validOptions[con[0]] {
+-				return "", "", fmt.Errorf("Bad label option %q, valid options 'disable, user, role, level, type'", con[0])
+-
+-			}
+-			pcon[con[0]] = con[1]
+-			if con[0] == "level" || con[0] == "user" {
+-				mcon[con[0]] = con[1]
+-			}
+-		}
+-		processLabel = pcon.Get()
+-		mountLabel = mcon.Get()
+-	}
+-	return processLabel, mountLabel, nil
+-}
+-
+-func GetROMountLabel() string {
+-	return selinux.GetROFileLabel()
+-}
+-
+-// DEPRECATED: The GenLabels function is only to be used during the transition to the official API.
+-func GenLabels(options string) (string, string, error) {
+-	return InitLabels(strings.Fields(options))
+-}
+-
+-// FormatMountLabel returns a string to be used by the mount command.
+-// The format of this string will be used to alter the labeling of the mountpoint.
+-// The string returned is suitable to be used as the options field of the mount command.
+-// If you need to have additional mount point options, you can pass them in as
+-// the first parameter.  Second parameter is the label that you wish to apply
+-// to all content in the mount point.
+-func FormatMountLabel(src, mountLabel string) string {
+-	if mountLabel != "" {
+-		switch src {
+-		case "":
+-			src = fmt.Sprintf("context=%q", mountLabel)
+-		default:
+-			src = fmt.Sprintf("%s,context=%q", src, mountLabel)
+-		}
+-	}
+-	return src
+-}
+-
+-// SetProcessLabel takes a process label and tells the kernel to assign the
+-// label to the next program executed by the current process.
+-func SetProcessLabel(processLabel string) error {
+-	if processLabel == "" {
+-		return nil
+-	}
+-	return selinux.Setexeccon(processLabel)
+-}
+-
+-// GetProcessLabel returns the process label that the kernel will assign
+-// to the next program executed by the current process.  If "" is returned
+-// this indicates that the default labeling will happen for the process.
+-func GetProcessLabel() (string, error) {
+-	return selinux.Getexeccon()
+-}
+-
+-// GetFileLabel returns the label for specified path
+-func GetFileLabel(path string) (string, error) {
+-	return selinux.Getfilecon(path)
+-}
+-
+-// SetFileLabel modifies the "path" label to the specified file label
+-func SetFileLabel(path string, fileLabel string) error {
+-	if selinux.SelinuxEnabled() && fileLabel != "" {
+-		return selinux.Setfilecon(path, fileLabel)
+-	}
+-	return nil
+-}
+-
+-// SetFileCreateLabel tells the kernel the label for all files to be created
+-func SetFileCreateLabel(fileLabel string) error {
+-	if selinux.SelinuxEnabled() {
+-		return selinux.Setfscreatecon(fileLabel)
+-	}
+-	return nil
+-}
+-
+-// Relabel changes the label of path to the filelabel string.
+-// It changes the MCS label to s0 if shared is true.
+-// This will allow all containers to share the content.
+-func Relabel(path string, fileLabel string, shared bool) error {
+-	if !selinux.SelinuxEnabled() {
+-		return nil
+-	}
+-
+-	if fileLabel == "" {
+-		return nil
+-	}
+-
+-	exclude_paths := map[string]bool{"/": true, "/usr": true, "/etc": true}
+-	if exclude_paths[path] {
+-		return fmt.Errorf("SELinux relabeling of %s is not allowed", path)
+-	}
+-
+-	if shared {
+-		c := selinux.NewContext(fileLabel)
+-		c["level"] = "s0"
+-		fileLabel = c.Get()
+-	}
+-	if err := selinux.Chcon(path, fileLabel, true); err != nil {
+-		return err
+-	}
+-	return nil
+-}
+-
+-// GetPidLabel will return the label of the process running with the specified pid
+-func GetPidLabel(pid int) (string, error) {
+-	return selinux.Getpidcon(pid)
+-}
+-
+-// Init initialises the labeling system
+-func Init() {
+-	selinux.SelinuxEnabled()
+-}
+-
+-// ReserveLabel will record the fact that the MCS label has already been used.
+-// This will prevent InitLabels from using the MCS label in a newly created
+-// container
+-func ReserveLabel(label string) error {
+-	selinux.ReserveLabel(label)
+-	return nil
+-}
+-
+-// UnreserveLabel will remove the reservation of the MCS label.
+-// This will allow InitLabels to use the MCS label in a newly created
+-// containers
+-func UnreserveLabel(label string) error {
+-	selinux.FreeLxcContexts(label)
+-	return nil
+-}
+-
+-// DupSecOpt takes a process label and returns security options that
+-// can be used to set duplicate labels on future container processes
+-func DupSecOpt(src string) []string {
+-	return selinux.DupSecOpt(src)
+-}
+-
+-// DisableSecOpt returns a security opt that can disable labeling
+-// support for future container processes
+-func DisableSecOpt() []string {
+-	return selinux.DisableSecOpt()
+-}
+-
+-// Validate checks that the label does not include unexpected options
+-func Validate(label string) error {
+-	if strings.Contains(label, "z") && strings.Contains(label, "Z") {
+-		return ErrIncompatibleLabel
+-	}
+-	return nil
+-}
+-
+-// RelabelNeeded checks whether the user requested a relabel
+-func RelabelNeeded(label string) bool {
+-	return strings.Contains(label, "z") || strings.Contains(label, "Z")
+-}
+-
+-// IsShared checks that the label includes a "shared" mark
+-func IsShared(label string) bool {
+-	return strings.Contains(label, "z")
+-}
+diff --git a/libcontainer/label/label_selinux_test.go b/libcontainer/label/label_selinux_test.go
+deleted file mode 100644
+index 8956a70..0000000
+--- a/libcontainer/label/label_selinux_test.go
++++ /dev/null
+@@ -1,148 +0,0 @@
+-// +build selinux,linux
+-
+-package label
+-
+-import (
+-	"os"
+-	"strings"
+-	"testing"
+-
+-	"github.com/opencontainers/runc/libcontainer/selinux"
+-)
+-
+-func TestInit(t *testing.T) {
+-	if selinux.SelinuxEnabled() {
+-		var testNull []string
+-		plabel, mlabel, err := InitLabels(testNull)
+-		if err != nil {
+-			t.Log("InitLabels Failed")
+-			t.Fatal(err)
+-		}
+-		testDisabled := []string{"disable"}
+-		roMountLabel := GetROMountLabel()
+-		if roMountLabel == "" {
+-			t.Errorf("GetROMountLabel Failed")
+-		}
+-		plabel, mlabel, err = InitLabels(testDisabled)
+-		if err != nil {
+-			t.Log("InitLabels Disabled Failed")
+-			t.Fatal(err)
+-		}
+-		if plabel != "" {
+-			t.Log("InitLabels Disabled Failed")
+-			t.FailNow()
+-		}
+-		testUser := []string{"user:user_u", "role:user_r", "type:user_t", "level:s0:c1,c15"}
+-		plabel, mlabel, err = InitLabels(testUser)
+-		if err != nil {
+-			t.Log("InitLabels User Failed")
+-			t.Fatal(err)
+-		}
+-		if plabel != "user_u:user_r:user_t:s0:c1,c15" || mlabel != "user_u:object_r:svirt_sandbox_file_t:s0:c1,c15" {
+-			t.Log("InitLabels User Match Failed")
+-			t.Log(plabel, mlabel)
+-			t.Fatal(err)
+-		}
+-
+-		testBadData := []string{"user", "role:user_r", "type:user_t", "level:s0:c1,c15"}
+-		if _, _, err = InitLabels(testBadData); err == nil {
+-			t.Log("InitLabels Bad Failed")
+-			t.Fatal(err)
+-		}
+-	}
+-}
+-func TestDuplicateLabel(t *testing.T) {
+-	secopt := DupSecOpt("system_u:system_r:svirt_lxc_net_t:s0:c1,c2")
+-	t.Log(secopt)
+-	for _, opt := range secopt {
+-		parts := strings.SplitN(opt, "=", 2)
+-		if len(parts) != 2 || parts[0] != "label" {
+-			t.Errorf("Invalid DupSecOpt return value")
+-			continue
+-		}
+-		con := strings.SplitN(parts[1], ":", 2)
+-		if con[0] == "user" {
+-			if con[1] != "system_u" {
+-				t.Errorf("DupSecOpt Failed user incorrect")
+-			}
+-			continue
+-		}
+-		if con[0] == "role" {
+-			if con[1] != "system_r" {
+-				t.Errorf("DupSecOpt Failed role incorrect")
+-			}
+-			continue
+-		}
+-		if con[0] == "type" {
+-			if con[1] != "svirt_lxc_net_t" {
+-				t.Errorf("DupSecOpt Failed type incorrect")
+-			}
+-			continue
+-		}
+-		if con[0] == "level" {
+-			if con[1] != "s0:c1,c2" {
+-				t.Errorf("DupSecOpt Failed level incorrect")
+-			}
+-			continue
+-		}
+-		t.Errorf("DupSecOpt Failed invalid field %q", con[0])
+-	}
+-	secopt = DisableSecOpt()
+-	if secopt[0] != "label=disable" {
+-		t.Errorf("DisableSecOpt Failed level incorrect")
+-	}
+-}
+-func TestRelabel(t *testing.T) {
+-	testdir := "/tmp/test"
+-	if err := os.Mkdir(testdir, 0755); err != nil {
+-		t.Fatal(err)
+-	}
+-	defer os.RemoveAll(testdir)
+-	label := "system_u:object_r:svirt_sandbox_file_t:s0:c1,c2"
+-	if err := Relabel(testdir, "", true); err != nil {
+-		t.Fatalf("Relabel with no label failed: %v", err)
+-	}
+-	if err := Relabel(testdir, label, true); err != nil {
+-		t.Fatalf("Relabel shared failed: %v", err)
+-	}
+-	if err := Relabel(testdir, label, false); err != nil {
+-		t.Fatalf("Relabel unshared failed: %v", err)
+-	}
+-	if err := Relabel("/etc", label, false); err == nil {
+-		t.Fatalf("Relabel /etc succeeded")
+-	}
+-	if err := Relabel("/", label, false); err == nil {
+-		t.Fatalf("Relabel / succeeded")
+-	}
+-	if err := Relabel("/usr", label, false); err == nil {
+-		t.Fatalf("Relabel /usr succeeded")
+-	}
+-}
+-
+-func TestValidate(t *testing.T) {
+-	if err := Validate("zZ"); err != ErrIncompatibleLabel {
+-		t.Fatalf("Expected incompatible error, got %v", err)
+-	}
+-	if err := Validate("Z"); err != nil {
+-		t.Fatal(err)
+-	}
+-	if err := Validate("z"); err != nil {
+-		t.Fatal(err)
+-	}
+-	if err := Validate(""); err != nil {
+-		t.Fatal(err)
+-	}
+-}
+-
+-func TestIsShared(t *testing.T) {
+-	if shared := IsShared("Z"); shared {
+-		t.Fatalf("Expected label `Z` to not be shared, got %v", shared)
+-	}
+-	if shared := IsShared("z"); !shared {
+-		t.Fatalf("Expected label `z` to be shared, got %v", shared)
+-	}
+-	if shared := IsShared("Zz"); !shared {
+-		t.Fatalf("Expected label `Zz` to be shared, got %v", shared)
+-	}
+-
+-}
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 2635fd6..1045a45 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -19,9 +19,9 @@ import (
+ 	"github.com/mrunalp/fileutils"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+-	"github.com/opencontainers/runc/libcontainer/label"
+ 	"github.com/opencontainers/runc/libcontainer/system"
+ 	libcontainerUtils "github.com/opencontainers/runc/libcontainer/utils"
++	"github.com/opencontainers/selinux/go-selinux/label"
+ )
+ 
+ const defaultMountFlags = syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
+diff --git a/libcontainer/selinux/selinux.go b/libcontainer/selinux/selinux.go
+deleted file mode 100644
+index 5bd028b..0000000
+--- a/libcontainer/selinux/selinux.go
++++ /dev/null
+@@ -1,549 +0,0 @@
+-// +build linux
+-
+-package selinux
+-
+-import (
+-	"bufio"
+-	"crypto/rand"
+-	"encoding/binary"
+-	"fmt"
+-	"io"
+-	"os"
+-	"path/filepath"
+-	"regexp"
+-	"strconv"
+-	"strings"
+-	"sync"
+-	"syscall"
+-
+-	"github.com/opencontainers/runc/libcontainer/system"
+-)
+-
+-const (
+-	Enforcing        = 1
+-	Permissive       = 0
+-	Disabled         = -1
+-	selinuxDir       = "/etc/selinux/"
+-	selinuxConfig    = selinuxDir + "config"
+-	selinuxTypeTag   = "SELINUXTYPE"
+-	selinuxTag       = "SELINUX"
+-	selinuxPath      = "/sys/fs/selinux"
+-	xattrNameSelinux = "security.selinux"
+-	stRdOnly         = 0x01
+-)
+-
+-type selinuxState struct {
+-	enabledSet   bool
+-	enabled      bool
+-	selinuxfsSet bool
+-	selinuxfs    string
+-	mcsList      map[string]bool
+-	sync.Mutex
+-}
+-
+-var (
+-	assignRegex = regexp.MustCompile(`^([^=]+)=(.*)$`)
+-	state       = selinuxState{
+-		mcsList: make(map[string]bool),
+-	}
+-)
+-
+-type SELinuxContext map[string]string
+-
+-func (s *selinuxState) setEnable(enabled bool) bool {
+-	s.Lock()
+-	defer s.Unlock()
+-	s.enabledSet = true
+-	s.enabled = enabled
+-	return s.enabled
+-}
+-
+-func (s *selinuxState) getEnabled() bool {
+-	s.Lock()
+-	enabled := s.enabled
+-	enabledSet := s.enabledSet
+-	s.Unlock()
+-	if enabledSet {
+-		return enabled
+-	}
+-
+-	enabled = false
+-	if fs := getSelinuxMountPoint(); fs != "" {
+-		if con, _ := Getcon(); con != "kernel" {
+-			enabled = true
+-		}
+-	}
+-	return s.setEnable(enabled)
+-}
+-
+-// SetDisabled disables selinux support for the package
+-func SetDisabled() {
+-	state.setEnable(false)
+-}
+-
+-func (s *selinuxState) setSELinuxfs(selinuxfs string) string {
+-	s.Lock()
+-	defer s.Unlock()
+-	s.selinuxfsSet = true
+-	s.selinuxfs = selinuxfs
+-	return s.selinuxfs
+-}
+-
+-func (s *selinuxState) getSELinuxfs() string {
+-	s.Lock()
+-	selinuxfs := s.selinuxfs
+-	selinuxfsSet := s.selinuxfsSet
+-	s.Unlock()
+-	if selinuxfsSet {
+-		return selinuxfs
+-	}
+-
+-	selinuxfs = ""
+-	f, err := os.Open("/proc/self/mountinfo")
+-	if err != nil {
+-		return selinuxfs
+-	}
+-	defer f.Close()
+-
+-	scanner := bufio.NewScanner(f)
+-	for scanner.Scan() {
+-		txt := scanner.Text()
+-		// Safe as mountinfo encodes mountpoints with spaces as \040.
+-		sepIdx := strings.Index(txt, " - ")
+-		if sepIdx == -1 {
+-			continue
+-		}
+-		if !strings.Contains(txt[sepIdx:], "selinuxfs") {
+-			continue
+-		}
+-		fields := strings.Split(txt, " ")
+-		if len(fields) < 5 {
+-			continue
+-		}
+-		selinuxfs = fields[4]
+-		break
+-	}
+-
+-	if selinuxfs != "" {
+-		var buf syscall.Statfs_t
+-		syscall.Statfs(selinuxfs, &buf)
+-		if (buf.Flags & stRdOnly) == 1 {
+-			selinuxfs = ""
+-		}
+-	}
+-	return s.setSELinuxfs(selinuxfs)
+-}
+-
+-// getSelinuxMountPoint returns the path to the mountpoint of an selinuxfs
+-// filesystem or an empty string if no mountpoint is found.  Selinuxfs is
+-// a proc-like pseudo-filesystem that exposes the selinux policy API to
+-// processes.  The existence of an selinuxfs mount is used to determine
+-// whether selinux is currently enabled or not.
+-func getSelinuxMountPoint() string {
+-	return state.getSELinuxfs()
+-}
+-
+-// SelinuxEnabled returns whether selinux is currently enabled.
+-func SelinuxEnabled() bool {
+-	return state.getEnabled()
+-}
+-
+-func readConfig(target string) (value string) {
+-	var (
+-		val, key string
+-		bufin    *bufio.Reader
+-	)
+-
+-	in, err := os.Open(selinuxConfig)
+-	if err != nil {
+-		return ""
+-	}
+-	defer in.Close()
+-
+-	bufin = bufio.NewReader(in)
+-
+-	for done := false; !done; {
+-		var line string
+-		if line, err = bufin.ReadString('\n'); err != nil {
+-			if err != io.EOF {
+-				return ""
+-			}
+-			done = true
+-		}
+-		line = strings.TrimSpace(line)
+-		if len(line) == 0 {
+-			// Skip blank lines
+-			continue
+-		}
+-		if line[0] == ';' || line[0] == '#' {
+-			// Skip comments
+-			continue
+-		}
+-		if groups := assignRegex.FindStringSubmatch(line); groups != nil {
+-			key, val = strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
+-			if key == target {
+-				return strings.Trim(val, "\"")
+-			}
+-		}
+-	}
+-	return ""
+-}
+-
+-func getSELinuxPolicyRoot() string {
+-	return selinuxDir + readConfig(selinuxTypeTag)
+-}
+-
+-func readCon(name string) (string, error) {
+-	var val string
+-
+-	in, err := os.Open(name)
+-	if err != nil {
+-		return "", err
+-	}
+-	defer in.Close()
+-
+-	_, err = fmt.Fscanf(in, "%s", &val)
+-	return val, err
+-}
+-
+-// Setfilecon sets the SELinux label for this path or returns an error.
+-func Setfilecon(path string, scon string) error {
+-	return system.Lsetxattr(path, xattrNameSelinux, []byte(scon), 0)
+-}
+-
+-// Getfilecon returns the SELinux label for this path or returns an error.
+-func Getfilecon(path string) (string, error) {
+-	con, err := system.Lgetxattr(path, xattrNameSelinux)
+-	if err != nil {
+-		return "", err
+-	}
+-	// Trim the NUL byte at the end of the byte buffer, if present.
+-	if len(con) > 0 && con[len(con)-1] == '\x00' {
+-		con = con[:len(con)-1]
+-	}
+-	return string(con), nil
+-}
+-
+-func Setfscreatecon(scon string) error {
+-	return writeCon(fmt.Sprintf("/proc/self/task/%d/attr/fscreate", syscall.Gettid()), scon)
+-}
+-
+-func Getfscreatecon() (string, error) {
+-	return readCon(fmt.Sprintf("/proc/self/task/%d/attr/fscreate", syscall.Gettid()))
+-}
+-
+-// Getcon returns the SELinux label of the current process thread, or an error.
+-func Getcon() (string, error) {
+-	return readCon(fmt.Sprintf("/proc/self/task/%d/attr/current", syscall.Gettid()))
+-}
+-
+-// Getpidcon returns the SELinux label of the given pid, or an error.
+-func Getpidcon(pid int) (string, error) {
+-	return readCon(fmt.Sprintf("/proc/%d/attr/current", pid))
+-}
+-
+-func Getexeccon() (string, error) {
+-	return readCon(fmt.Sprintf("/proc/self/task/%d/attr/exec", syscall.Gettid()))
+-}
+-
+-func writeCon(name string, val string) error {
+-	out, err := os.OpenFile(name, os.O_WRONLY, 0)
+-	if err != nil {
+-		return err
+-	}
+-	defer out.Close()
+-
+-	if val != "" {
+-		_, err = out.Write([]byte(val))
+-	} else {
+-		_, err = out.Write(nil)
+-	}
+-	return err
+-}
+-
+-func Setexeccon(scon string) error {
+-	return writeCon(fmt.Sprintf("/proc/self/task/%d/attr/exec", syscall.Gettid()), scon)
+-}
+-
+-func (c SELinuxContext) Get() string {
+-	return fmt.Sprintf("%s:%s:%s:%s", c["user"], c["role"], c["type"], c["level"])
+-}
+-
+-func NewContext(scon string) SELinuxContext {
+-	c := make(SELinuxContext)
+-
+-	if len(scon) != 0 {
+-		con := strings.SplitN(scon, ":", 4)
+-		c["user"] = con[0]
+-		c["role"] = con[1]
+-		c["type"] = con[2]
+-		c["level"] = con[3]
+-	}
+-	return c
+-}
+-
+-func ReserveLabel(scon string) {
+-	if len(scon) != 0 {
+-		con := strings.SplitN(scon, ":", 4)
+-		mcsAdd(con[3])
+-	}
+-}
+-
+-func selinuxEnforcePath() string {
+-	return fmt.Sprintf("%s/enforce", selinuxPath)
+-}
+-
+-func SelinuxGetEnforce() int {
+-	var enforce int
+-
+-	enforceS, err := readCon(selinuxEnforcePath())
+-	if err != nil {
+-		return -1
+-	}
+-
+-	enforce, err = strconv.Atoi(string(enforceS))
+-	if err != nil {
+-		return -1
+-	}
+-	return enforce
+-}
+-
+-func SelinuxSetEnforce(mode int) error {
+-	return writeCon(selinuxEnforcePath(), fmt.Sprintf("%d", mode))
+-}
+-
+-func SelinuxGetEnforceMode() int {
+-	switch readConfig(selinuxTag) {
+-	case "enforcing":
+-		return Enforcing
+-	case "permissive":
+-		return Permissive
+-	}
+-	return Disabled
+-}
+-
+-func mcsAdd(mcs string) error {
+-	state.Lock()
+-	defer state.Unlock()
+-	if state.mcsList[mcs] {
+-		return fmt.Errorf("MCS Label already exists")
+-	}
+-	state.mcsList[mcs] = true
+-	return nil
+-}
+-
+-func mcsDelete(mcs string) {
+-	state.Lock()
+-	defer state.Unlock()
+-	state.mcsList[mcs] = false
+-}
+-
+-func IntToMcs(id int, catRange uint32) string {
+-	var (
+-		SETSIZE = int(catRange)
+-		TIER    = SETSIZE
+-		ORD     = id
+-	)
+-
+-	if id < 1 || id > 523776 {
+-		return ""
+-	}
+-
+-	for ORD > TIER {
+-		ORD = ORD - TIER
+-		TIER--
+-	}
+-	TIER = SETSIZE - TIER
+-	ORD = ORD + TIER
+-	return fmt.Sprintf("s0:c%d,c%d", TIER, ORD)
+-}
+-
+-func uniqMcs(catRange uint32) string {
+-	var (
+-		n      uint32
+-		c1, c2 uint32
+-		mcs    string
+-	)
+-
+-	for {
+-		binary.Read(rand.Reader, binary.LittleEndian, &n)
+-		c1 = n % catRange
+-		binary.Read(rand.Reader, binary.LittleEndian, &n)
+-		c2 = n % catRange
+-		if c1 == c2 {
+-			continue
+-		} else {
+-			if c1 > c2 {
+-				c1, c2 = c2, c1
+-			}
+-		}
+-		mcs = fmt.Sprintf("s0:c%d,c%d", c1, c2)
+-		if err := mcsAdd(mcs); err != nil {
+-			continue
+-		}
+-		break
+-	}
+-	return mcs
+-}
+-
+-func FreeLxcContexts(scon string) {
+-	if len(scon) != 0 {
+-		con := strings.SplitN(scon, ":", 4)
+-		mcsDelete(con[3])
+-	}
+-}
+-
+-var roFileLabel string
+-
+-func GetROFileLabel() (fileLabel string) {
+-	return roFileLabel
+-}
+-
+-func GetLxcContexts() (processLabel string, fileLabel string) {
+-	var (
+-		val, key string
+-		bufin    *bufio.Reader
+-	)
+-
+-	if !SelinuxEnabled() {
+-		return "", ""
+-	}
+-	lxcPath := fmt.Sprintf("%s/contexts/lxc_contexts", getSELinuxPolicyRoot())
+-	in, err := os.Open(lxcPath)
+-	if err != nil {
+-		return "", ""
+-	}
+-	defer in.Close()
+-
+-	bufin = bufio.NewReader(in)
+-
+-	for done := false; !done; {
+-		var line string
+-		if line, err = bufin.ReadString('\n'); err != nil {
+-			if err == io.EOF {
+-				done = true
+-			} else {
+-				goto exit
+-			}
+-		}
+-		line = strings.TrimSpace(line)
+-		if len(line) == 0 {
+-			// Skip blank lines
+-			continue
+-		}
+-		if line[0] == ';' || line[0] == '#' {
+-			// Skip comments
+-			continue
+-		}
+-		if groups := assignRegex.FindStringSubmatch(line); groups != nil {
+-			key, val = strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
+-			if key == "process" {
+-				processLabel = strings.Trim(val, "\"")
+-			}
+-			if key == "file" {
+-				fileLabel = strings.Trim(val, "\"")
+-			}
+-			if key == "ro_file" {
+-				roFileLabel = strings.Trim(val, "\"")
+-			}
+-		}
+-	}
+-
+-	if processLabel == "" || fileLabel == "" {
+-		return "", ""
+-	}
+-
+-	if roFileLabel == "" {
+-		roFileLabel = fileLabel
+-	}
+-exit:
+-	//	mcs := IntToMcs(os.Getpid(), 1024)
+-	mcs := uniqMcs(1024)
+-	scon := NewContext(processLabel)
+-	scon["level"] = mcs
+-	processLabel = scon.Get()
+-	scon = NewContext(fileLabel)
+-	scon["level"] = mcs
+-	fileLabel = scon.Get()
+-	return processLabel, fileLabel
+-}
+-
+-func SecurityCheckContext(val string) error {
+-	return writeCon(fmt.Sprintf("%s.context", selinuxPath), val)
+-}
+-
+-func CopyLevel(src, dest string) (string, error) {
+-	if src == "" {
+-		return "", nil
+-	}
+-	if err := SecurityCheckContext(src); err != nil {
+-		return "", err
+-	}
+-	if err := SecurityCheckContext(dest); err != nil {
+-		return "", err
+-	}
+-	scon := NewContext(src)
+-	tcon := NewContext(dest)
+-	mcsDelete(tcon["level"])
+-	mcsAdd(scon["level"])
+-	tcon["level"] = scon["level"]
+-	return tcon.Get(), nil
+-}
+-
+-// Prevent users from relabing system files
+-func badPrefix(fpath string) error {
+-	var badprefixes = []string{"/usr"}
+-
+-	for _, prefix := range badprefixes {
+-		if fpath == prefix || strings.HasPrefix(fpath, fmt.Sprintf("%s/", prefix)) {
+-			return fmt.Errorf("relabeling content in %s is not allowed", prefix)
+-		}
+-	}
+-	return nil
+-}
+-
+-// Chcon changes the fpath file object to the SELinux label scon.
+-// If the fpath is a directory and recurse is true Chcon will walk the
+-// directory tree setting the label
+-func Chcon(fpath string, scon string, recurse bool) error {
+-	if scon == "" {
+-		return nil
+-	}
+-	if err := badPrefix(fpath); err != nil {
+-		return err
+-	}
+-	callback := func(p string, info os.FileInfo, err error) error {
+-		return Setfilecon(p, scon)
+-	}
+-
+-	if recurse {
+-		return filepath.Walk(fpath, callback)
+-	}
+-
+-	return Setfilecon(fpath, scon)
+-}
+-
+-// DupSecOpt takes an SELinux process label and returns security options that
+-// can will set the SELinux Type and Level for future container processes
+-func DupSecOpt(src string) []string {
+-	if src == "" {
+-		return nil
+-	}
+-	con := NewContext(src)
+-	if con["user"] == "" ||
+-		con["role"] == "" ||
+-		con["type"] == "" ||
+-		con["level"] == "" {
+-		return nil
+-	}
+-	return []string{"user:" + con["user"],
+-		"role:" + con["role"],
+-		"type:" + con["type"],
+-		"level:" + con["level"]}
+-}
+-
+-// DisableSecOpt returns a security opt that can be used to disabling SELinux
+-// labeling support for future container processes
+-func DisableSecOpt() []string {
+-	return []string{"disable"}
+-}
+diff --git a/libcontainer/selinux/selinux_test.go b/libcontainer/selinux/selinux_test.go
+deleted file mode 100644
+index d67284e..0000000
+--- a/libcontainer/selinux/selinux_test.go
++++ /dev/null
+@@ -1,85 +0,0 @@
+-// +build linux,selinux
+-
+-package selinux_test
+-
+-import (
+-	"os"
+-	"testing"
+-
+-	"github.com/opencontainers/runc/libcontainer/selinux"
+-)
+-
+-func TestSetfilecon(t *testing.T) {
+-	if selinux.SelinuxEnabled() {
+-		tmp := "selinux_test"
+-		con := "system_u:object_r:bin_t:s0"
+-		out, _ := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE, 0)
+-		out.Close()
+-		err := selinux.Setfilecon(tmp, con)
+-		if err != nil {
+-			t.Log("Setfilecon failed")
+-			t.Fatal(err)
+-		}
+-		filecon, err := selinux.Getfilecon(tmp)
+-		if err != nil {
+-			t.Log("Getfilecon failed")
+-			t.Fatal(err)
+-		}
+-		if con != filecon {
+-			t.Fatal("Getfilecon failed, returned %s expected %s", filecon, con)
+-		}
+-
+-		os.Remove(tmp)
+-	}
+-}
+-
+-func TestSELinux(t *testing.T) {
+-	var (
+-		err            error
+-		plabel, flabel string
+-	)
+-
+-	if selinux.SelinuxEnabled() {
+-		t.Log("Enabled")
+-		plabel, flabel = selinux.GetLxcContexts()
+-		t.Log(plabel)
+-		t.Log(flabel)
+-		selinux.FreeLxcContexts(plabel)
+-		plabel, flabel = selinux.GetLxcContexts()
+-		t.Log(plabel)
+-		t.Log(flabel)
+-		selinux.FreeLxcContexts(plabel)
+-		t.Log("getenforce ", selinux.SelinuxGetEnforce())
+-		mode := selinux.SelinuxGetEnforceMode()
+-		t.Log("getenforcemode ", mode)
+-
+-		defer selinux.SelinuxSetEnforce(mode)
+-		if err := selinux.SelinuxSetEnforce(selinux.Enforcing); err != nil {
+-			t.Fatalf("enforcing selinux failed: %v", err)
+-		}
+-		if err := selinux.SelinuxSetEnforce(selinux.Permissive); err != nil {
+-			t.Fatalf("setting selinux mode to permissive failed: %v", err)
+-		}
+-		selinux.SelinuxSetEnforce(mode)
+-
+-		pid := os.Getpid()
+-		t.Logf("PID:%d MCS:%s\n", pid, selinux.IntToMcs(pid, 1023))
+-		err = selinux.Setfscreatecon("unconfined_u:unconfined_r:unconfined_t:s0")
+-		if err == nil {
+-			t.Log(selinux.Getfscreatecon())
+-		} else {
+-			t.Log("setfscreatecon failed", err)
+-			t.Fatal(err)
+-		}
+-		err = selinux.Setfscreatecon("")
+-		if err == nil {
+-			t.Log(selinux.Getfscreatecon())
+-		} else {
+-			t.Log("setfscreatecon failed", err)
+-			t.Fatal(err)
+-		}
+-		t.Log(selinux.Getpidcon(1))
+-	} else {
+-		t.Log("Disabled")
+-	}
+-}
+diff --git a/libcontainer/setns_init_linux.go b/libcontainer/setns_init_linux.go
+index f6e8998..48cc0ae 100644
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -8,9 +8,9 @@ import (
+ 
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+-	"github.com/opencontainers/runc/libcontainer/label"
+ 	"github.com/opencontainers/runc/libcontainer/seccomp"
+ 	"github.com/opencontainers/runc/libcontainer/system"
++	"github.com/opencontainers/selinux/go-selinux/label"
+ )
+ 
+ // linuxSetnsInit performs the container's initialization for running a new process
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index d9cc5e5..ee6f19a 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -11,9 +11,9 @@ import (
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+-	"github.com/opencontainers/runc/libcontainer/label"
+ 	"github.com/opencontainers/runc/libcontainer/seccomp"
+ 	"github.com/opencontainers/runc/libcontainer/system"
++	"github.com/opencontainers/selinux/go-selinux/label"
+ )
+ 
+ type linuxStandardInit struct {
+diff --git a/vendor.conf b/vendor.conf
+index e3a29d2..75dfca4 100644
+--- a/vendor.conf
++++ b/vendor.conf
+@@ -7,6 +7,7 @@ github.com/godbus/dbus c7fdd8b5cd55e87b4e1f4e372cdb1db61dd6c66f
+ github.com/golang/protobuf/proto f7137ae6b19afbfd61a94b746fda3b3fe0491874
+ github.com/mrunalp/fileutils ed869b029674c0e9ce4c0dfa781405c2d9946d08
+ github.com/opencontainers/runtime-spec/specs-go 035da1dca3dfbb00d752eb58b0b158d6129f3776
++github.com/opencontainers/selinux ba1aefe8057f1d0cfb8e88d0ec1dc85925ef987d
+ github.com/seccomp/libseccomp-golang 32f571b70023028bd57d9288c20efbcb237f3ce0
+ github.com/syndtr/gocapability/capability e7cb7fa329f456b3855136a2642b197bad7366ba
+ github.com/urfave/cli d53eb991652b1d438abdd34ce4bfa3ef1539108e
+diff --git a/vendor/github.com/opencontainers/selinux/LICENSE b/vendor/github.com/opencontainers/selinux/LICENSE
+new file mode 100644
+index 0000000..8dada3e
+--- /dev/null
++++ b/vendor/github.com/opencontainers/selinux/LICENSE
+@@ -0,0 +1,201 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "{}"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright {yyyy} {name of copyright owner}
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+diff --git a/vendor/github.com/opencontainers/selinux/README.md b/vendor/github.com/opencontainers/selinux/README.md
+new file mode 100644
+index 0000000..043a929
+--- /dev/null
++++ b/vendor/github.com/opencontainers/selinux/README.md
+@@ -0,0 +1,7 @@
++# selinux
++
++[![GoDoc](https://godoc.org/github.com/opencontainers/selinux?status.svg)](https://godoc.org/github.com/opencontainers/selinux) [![Go Report Card](https://goreportcard.com/badge/github.com/opencontainers/selinux)](https://goreportcard.com/report/github.com/opencontainers/selinux) [![Build Status](https://travis-ci.org/opencontainers/selinux.svg?branch=master)](https://travis-ci.org/opencontainers/selinux)
++
++Common SELinux package used across the container ecosystem.
++
++Please see the [godoc](https://godoc.org/github.com/opencontainers/selinux) for more information.
+diff --git a/vendor/github.com/opencontainers/selinux/go-selinux/label/label.go b/vendor/github.com/opencontainers/selinux/go-selinux/label/label.go
+new file mode 100644
+index 0000000..6cfc5fd
+--- /dev/null
++++ b/vendor/github.com/opencontainers/selinux/go-selinux/label/label.go
+@@ -0,0 +1,84 @@
++// +build !selinux !linux
++
++package label
++
++// InitLabels returns the process label and file labels to be used within
++// the container.  A list of options can be passed into this function to alter
++// the labels.
++func InitLabels(options []string) (string, string, error) {
++	return "", "", nil
++}
++
++func GetROMountLabel() string {
++	return ""
++}
++
++func GenLabels(options string) (string, string, error) {
++	return "", "", nil
++}
++
++func FormatMountLabel(src string, mountLabel string) string {
++	return src
++}
++
++func SetProcessLabel(processLabel string) error {
++	return nil
++}
++
++func GetFileLabel(path string) (string, error) {
++	return "", nil
++}
++
++func SetFileLabel(path string, fileLabel string) error {
++	return nil
++}
++
++func SetFileCreateLabel(fileLabel string) error {
++	return nil
++}
++
++func Relabel(path string, fileLabel string, shared bool) error {
++	return nil
++}
++
++func GetPidLabel(pid int) (string, error) {
++	return "", nil
++}
++
++func Init() {
++}
++
++func ReserveLabel(label string) error {
++	return nil
++}
++
++func ReleaseLabel(label string) error {
++	return nil
++}
++
++// DupSecOpt takes a process label and returns security options that
++// can be used to set duplicate labels on future container processes
++func DupSecOpt(src string) []string {
++	return nil
++}
++
++// DisableSecOpt returns a security opt that can disable labeling
++// support for future container processes
++func DisableSecOpt() []string {
++	return nil
++}
++
++// Validate checks that the label does not include unexpected options
++func Validate(label string) error {
++	return nil
++}
++
++// RelabelNeeded checks whether the user requested a relabel
++func RelabelNeeded(label string) bool {
++	return false
++}
++
++// IsShared checks that the label includes a "shared" mark
++func IsShared(label string) bool {
++	return false
++}
+diff --git a/vendor/github.com/opencontainers/selinux/go-selinux/label/label_selinux.go b/vendor/github.com/opencontainers/selinux/go-selinux/label/label_selinux.go
+new file mode 100644
+index 0000000..569dcf0
+--- /dev/null
++++ b/vendor/github.com/opencontainers/selinux/go-selinux/label/label_selinux.go
+@@ -0,0 +1,204 @@
++// +build selinux,linux
++
++package label
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/opencontainers/selinux/go-selinux"
++)
++
++// Valid Label Options
++var validOptions = map[string]bool{
++	"disable": true,
++	"type":    true,
++	"user":    true,
++	"role":    true,
++	"level":   true,
++}
++
++var ErrIncompatibleLabel = fmt.Errorf("Bad SELinux option z and Z can not be used together")
++
++// InitLabels returns the process label and file labels to be used within
++// the container.  A list of options can be passed into this function to alter
++// the labels.  The labels returned will include a random MCS String, that is
++// guaranteed to be unique.
++func InitLabels(options []string) (string, string, error) {
++	if !selinux.GetEnabled() {
++		return "", "", nil
++	}
++	processLabel, mountLabel := selinux.ContainerLabels()
++	if processLabel != "" {
++		pcon := selinux.NewContext(processLabel)
++		mcon := selinux.NewContext(mountLabel)
++		for _, opt := range options {
++			if opt == "disable" {
++				return "", "", nil
++			}
++			if i := strings.Index(opt, ":"); i == -1 {
++				return "", "", fmt.Errorf("Bad label option %q, valid options 'disable' or \n'user, role, level, type' followed by ':' and a value", opt)
++			}
++			con := strings.SplitN(opt, ":", 2)
++			if !validOptions[con[0]] {
++				return "", "", fmt.Errorf("Bad label option %q, valid options 'disable, user, role, level, type'", con[0])
++
++			}
++			pcon[con[0]] = con[1]
++			if con[0] == "level" || con[0] == "user" {
++				mcon[con[0]] = con[1]
++			}
++		}
++		processLabel = pcon.Get()
++		mountLabel = mcon.Get()
++	}
++	return processLabel, mountLabel, nil
++}
++
++func ROMountLabel() string {
++	return selinux.ROFileLabel()
++}
++
++// DEPRECATED: The GenLabels function is only to be used during the transition to the official API.
++func GenLabels(options string) (string, string, error) {
++	return InitLabels(strings.Fields(options))
++}
++
++// FormatMountLabel returns a string to be used by the mount command.
++// The format of this string will be used to alter the labeling of the mountpoint.
++// The string returned is suitable to be used as the options field of the mount command.
++// If you need to have additional mount point options, you can pass them in as
++// the first parameter.  Second parameter is the label that you wish to apply
++// to all content in the mount point.
++func FormatMountLabel(src, mountLabel string) string {
++	if mountLabel != "" {
++		switch src {
++		case "":
++			src = fmt.Sprintf("context=%q", mountLabel)
++		default:
++			src = fmt.Sprintf("%s,context=%q", src, mountLabel)
++		}
++	}
++	return src
++}
++
++// SetProcessLabel takes a process label and tells the kernel to assign the
++// label to the next program executed by the current process.
++func SetProcessLabel(processLabel string) error {
++	if processLabel == "" {
++		return nil
++	}
++	return selinux.SetExecLabel(processLabel)
++}
++
++// ProcessLabel returns the process label that the kernel will assign
++// to the next program executed by the current process.  If "" is returned
++// this indicates that the default labeling will happen for the process.
++func ProcessLabel() (string, error) {
++	return selinux.ExecLabel()
++}
++
++// GetFileLabel returns the label for specified path
++func FileLabel(path string) (string, error) {
++	return selinux.FileLabel(path)
++}
++
++// SetFileLabel modifies the "path" label to the specified file label
++func SetFileLabel(path string, fileLabel string) error {
++	if selinux.GetEnabled() && fileLabel != "" {
++		return selinux.SetFileLabel(path, fileLabel)
++	}
++	return nil
++}
++
++// SetFileCreateLabel tells the kernel the label for all files to be created
++func SetFileCreateLabel(fileLabel string) error {
++	if selinux.GetEnabled() {
++		return selinux.SetFSCreateLabel(fileLabel)
++	}
++	return nil
++}
++
++// Relabel changes the label of path to the filelabel string.
++// It changes the MCS label to s0 if shared is true.
++// This will allow all containers to share the content.
++func Relabel(path string, fileLabel string, shared bool) error {
++	if !selinux.GetEnabled() {
++		return nil
++	}
++
++	if fileLabel == "" {
++		return nil
++	}
++
++	exclude_paths := map[string]bool{"/": true, "/usr": true, "/etc": true}
++	if exclude_paths[path] {
++		return fmt.Errorf("SELinux relabeling of %s is not allowed", path)
++	}
++
++	if shared {
++		c := selinux.NewContext(fileLabel)
++		c["level"] = "s0"
++		fileLabel = c.Get()
++	}
++	if err := selinux.Chcon(path, fileLabel, true); err != nil {
++		return err
++	}
++	return nil
++}
++
++// PidLabel will return the label of the process running with the specified pid
++func PidLabel(pid int) (string, error) {
++	return selinux.PidLabel(pid)
++}
++
++// Init initialises the labeling system
++func Init() {
++	selinux.GetEnabled()
++}
++
++// ReserveLabel will record the fact that the MCS label has already been used.
++// This will prevent InitLabels from using the MCS label in a newly created
++// container
++func ReserveLabel(label string) error {
++	selinux.ReserveLabel(label)
++	return nil
++}
++
++// ReleaseLabel will remove the reservation of the MCS label.
++// This will allow InitLabels to use the MCS label in a newly created
++// containers
++func ReleaseLabel(label string) error {
++	selinux.ReleaseLabel(label)
++	return nil
++}
++
++// DupSecOpt takes a process label and returns security options that
++// can be used to set duplicate labels on future container processes
++func DupSecOpt(src string) []string {
++	return selinux.DupSecOpt(src)
++}
++
++// DisableSecOpt returns a security opt that can disable labeling
++// support for future container processes
++func DisableSecOpt() []string {
++	return selinux.DisableSecOpt()
++}
++
++// Validate checks that the label does not include unexpected options
++func Validate(label string) error {
++	if strings.Contains(label, "z") && strings.Contains(label, "Z") {
++		return ErrIncompatibleLabel
++	}
++	return nil
++}
++
++// RelabelNeeded checks whether the user requested a relabel
++func RelabelNeeded(label string) bool {
++	return strings.Contains(label, "z") || strings.Contains(label, "Z")
++}
++
++// IsShared checks that the label includes a "shared" mark
++func IsShared(label string) bool {
++	return strings.Contains(label, "z")
++}
+diff --git a/vendor/github.com/opencontainers/selinux/go-selinux/selinux.go b/vendor/github.com/opencontainers/selinux/go-selinux/selinux.go
+new file mode 100644
+index 0000000..4cf2c45
+--- /dev/null
++++ b/vendor/github.com/opencontainers/selinux/go-selinux/selinux.go
+@@ -0,0 +1,593 @@
++// +build linux
++
++package selinux
++
++import (
++	"bufio"
++	"crypto/rand"
++	"encoding/binary"
++	"fmt"
++	"io"
++	"os"
++	"path/filepath"
++	"regexp"
++	"strconv"
++	"strings"
++	"sync"
++	"syscall"
++)
++
++const (
++	// Enforcing constant indicate SELinux is in enforcing mode
++	Enforcing = 1
++	// Permissive constant to indicate SELinux is in permissive mode
++	Permissive = 0
++	// Disabled constant to indicate SELinux is disabled
++	Disabled         = -1
++	selinuxDir       = "/etc/selinux/"
++	selinuxConfig    = selinuxDir + "config"
++	selinuxTypeTag   = "SELINUXTYPE"
++	selinuxTag       = "SELINUX"
++	selinuxPath      = "/sys/fs/selinux"
++	xattrNameSelinux = "security.selinux"
++	stRdOnly         = 0x01
++)
++
++type selinuxState struct {
++	enabledSet   bool
++	enabled      bool
++	selinuxfsSet bool
++	selinuxfs    string
++	mcsList      map[string]bool
++	sync.Mutex
++}
++
++var (
++	assignRegex = regexp.MustCompile(`^([^=]+)=(.*)$`)
++	state       = selinuxState{
++		mcsList: make(map[string]bool),
++	}
++)
++
++// Context is a representation of the SELinux label broken into 4 parts
++type Context map[string]string
++
++func (s *selinuxState) setEnable(enabled bool) bool {
++	s.Lock()
++	defer s.Unlock()
++	s.enabledSet = true
++	s.enabled = enabled
++	return s.enabled
++}
++
++func (s *selinuxState) getEnabled() bool {
++	s.Lock()
++	enabled := s.enabled
++	enabledSet := s.enabledSet
++	s.Unlock()
++	if enabledSet {
++		return enabled
++	}
++
++	enabled = false
++	if fs := getSelinuxMountPoint(); fs != "" {
++		if con, _ := CurrentLabel(); con != "kernel" {
++			enabled = true
++		}
++	}
++	return s.setEnable(enabled)
++}
++
++// SetDisabled disables selinux support for the package
++func SetDisabled() {
++	state.setEnable(false)
++}
++
++func (s *selinuxState) setSELinuxfs(selinuxfs string) string {
++	s.Lock()
++	defer s.Unlock()
++	s.selinuxfsSet = true
++	s.selinuxfs = selinuxfs
++	return s.selinuxfs
++}
++
++func (s *selinuxState) getSELinuxfs() string {
++	s.Lock()
++	selinuxfs := s.selinuxfs
++	selinuxfsSet := s.selinuxfsSet
++	s.Unlock()
++	if selinuxfsSet {
++		return selinuxfs
++	}
++
++	selinuxfs = ""
++	f, err := os.Open("/proc/self/mountinfo")
++	if err != nil {
++		return selinuxfs
++	}
++	defer f.Close()
++
++	scanner := bufio.NewScanner(f)
++	for scanner.Scan() {
++		txt := scanner.Text()
++		// Safe as mountinfo encodes mountpoints with spaces as \040.
++		sepIdx := strings.Index(txt, " - ")
++		if sepIdx == -1 {
++			continue
++		}
++		if !strings.Contains(txt[sepIdx:], "selinuxfs") {
++			continue
++		}
++		fields := strings.Split(txt, " ")
++		if len(fields) < 5 {
++			continue
++		}
++		selinuxfs = fields[4]
++		break
++	}
++
++	if selinuxfs != "" {
++		var buf syscall.Statfs_t
++		syscall.Statfs(selinuxfs, &buf)
++		if (buf.Flags & stRdOnly) == 1 {
++			selinuxfs = ""
++		}
++	}
++	return s.setSELinuxfs(selinuxfs)
++}
++
++// getSelinuxMountPoint returns the path to the mountpoint of an selinuxfs
++// filesystem or an empty string if no mountpoint is found.  Selinuxfs is
++// a proc-like pseudo-filesystem that exposes the selinux policy API to
++// processes.  The existence of an selinuxfs mount is used to determine
++// whether selinux is currently enabled or not.
++func getSelinuxMountPoint() string {
++	return state.getSELinuxfs()
++}
++
++// GetEnabled returns whether selinux is currently enabled.
++func GetEnabled() bool {
++	return state.getEnabled()
++}
++
++func readConfig(target string) (value string) {
++	var (
++		val, key string
++		bufin    *bufio.Reader
++	)
++
++	in, err := os.Open(selinuxConfig)
++	if err != nil {
++		return ""
++	}
++	defer in.Close()
++
++	bufin = bufio.NewReader(in)
++
++	for done := false; !done; {
++		var line string
++		if line, err = bufin.ReadString('\n'); err != nil {
++			if err != io.EOF {
++				return ""
++			}
++			done = true
++		}
++		line = strings.TrimSpace(line)
++		if len(line) == 0 {
++			// Skip blank lines
++			continue
++		}
++		if line[0] == ';' || line[0] == '#' {
++			// Skip comments
++			continue
++		}
++		if groups := assignRegex.FindStringSubmatch(line); groups != nil {
++			key, val = strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
++			if key == target {
++				return strings.Trim(val, "\"")
++			}
++		}
++	}
++	return ""
++}
++
++func getSELinuxPolicyRoot() string {
++	return selinuxDir + readConfig(selinuxTypeTag)
++}
++
++func readCon(name string) (string, error) {
++	var val string
++
++	in, err := os.Open(name)
++	if err != nil {
++		return "", err
++	}
++	defer in.Close()
++
++	_, err = fmt.Fscanf(in, "%s", &val)
++	return val, err
++}
++
++// SetFileLabel sets the SELinux label for this path or returns an error.
++func SetFileLabel(path string, label string) error {
++	return lsetxattr(path, xattrNameSelinux, []byte(label), 0)
++}
++
++// Filecon returns the SELinux label for this path or returns an error.
++func FileLabel(path string) (string, error) {
++	label, err := lgetxattr(path, xattrNameSelinux)
++	if err != nil {
++		return "", err
++	}
++	// Trim the NUL byte at the end of the byte buffer, if present.
++	if len(label) > 0 && label[len(label)-1] == '\x00' {
++		label = label[:len(label)-1]
++	}
++	return string(label), nil
++}
++
++/*
++SetFSCreateLabel tells kernel the label to create all file system objects
++created by this task. Setting label="" to return to default.
++*/
++func SetFSCreateLabel(label string) error {
++	return writeCon(fmt.Sprintf("/proc/self/task/%d/attr/fscreate", syscall.Gettid()), label)
++}
++
++/*
++FSCreateLabel returns the default label the kernel which the kernel is using
++for file system objects created by this task. "" indicates default.
++*/
++func FSCreateLabel() (string, error) {
++	return readCon(fmt.Sprintf("/proc/self/task/%d/attr/fscreate", syscall.Gettid()))
++}
++
++// CurrentLabel returns the SELinux label of the current process thread, or an error.
++func CurrentLabel() (string, error) {
++	return readCon(fmt.Sprintf("/proc/self/task/%d/attr/current", syscall.Gettid()))
++}
++
++// PidLabel returns the SELinux label of the given pid, or an error.
++func PidLabel(pid int) (string, error) {
++	return readCon(fmt.Sprintf("/proc/%d/attr/current", pid))
++}
++
++/*
++ExecLabel returns the SELinux label that the kernel will use for any programs
++that are executed by the current process thread, or an error.
++*/
++func ExecLabel() (string, error) {
++	return readCon(fmt.Sprintf("/proc/self/task/%d/attr/exec", syscall.Gettid()))
++}
++
++func writeCon(name string, val string) error {
++	out, err := os.OpenFile(name, os.O_WRONLY, 0)
++	if err != nil {
++		return err
++	}
++	defer out.Close()
++
++	if val != "" {
++		_, err = out.Write([]byte(val))
++	} else {
++		_, err = out.Write(nil)
++	}
++	return err
++}
++
++/*
++SetExecLabel sets the SELinux label that the kernel will use for any programs
++that are executed by the current process thread, or an error.
++*/
++func SetExecLabel(label string) error {
++	return writeCon(fmt.Sprintf("/proc/self/task/%d/attr/exec", syscall.Gettid()), label)
++}
++
++// Get returns the Context as a string
++func (c Context) Get() string {
++	return fmt.Sprintf("%s:%s:%s:%s", c["user"], c["role"], c["type"], c["level"])
++}
++
++// NewContext creates a new Context struct from the specified label
++func NewContext(label string) Context {
++	c := make(Context)
++
++	if len(label) != 0 {
++		con := strings.SplitN(label, ":", 4)
++		c["user"] = con[0]
++		c["role"] = con[1]
++		c["type"] = con[2]
++		c["level"] = con[3]
++	}
++	return c
++}
++
++// ReserveLabel reserves the MLS/MCS level component of the specified label
++func ReserveLabel(label string) {
++	if len(label) != 0 {
++		con := strings.SplitN(label, ":", 4)
++		mcsAdd(con[3])
++	}
++}
++
++func selinuxEnforcePath() string {
++	return fmt.Sprintf("%s/enforce", selinuxPath)
++}
++
++// EnforceMode returns the current SELinux mode Enforcing, Permissive, Disabled
++func EnforceMode() int {
++	var enforce int
++
++	enforceS, err := readCon(selinuxEnforcePath())
++	if err != nil {
++		return -1
++	}
++
++	enforce, err = strconv.Atoi(string(enforceS))
++	if err != nil {
++		return -1
++	}
++	return enforce
++}
++
++/*
++SetEnforce sets the current SELinux mode Enforcing, Permissive.
++Disabled is not valid, since this needs to be set at boot time.
++*/
++func SetEnforceMode(mode int) error {
++	return writeCon(selinuxEnforcePath(), fmt.Sprintf("%d", mode))
++}
++
++/*
++DefaultEnforceMode returns the systems default SELinux mode Enforcing,
++Permissive or Disabled. Note this is is just the default at boot time.
++EnforceMode tells you the systems current mode.
++*/
++func DefaultEnforceMode() int {
++	switch readConfig(selinuxTag) {
++	case "enforcing":
++		return Enforcing
++	case "permissive":
++		return Permissive
++	}
++	return Disabled
++}
++
++func mcsAdd(mcs string) error {
++	state.Lock()
++	defer state.Unlock()
++	if state.mcsList[mcs] {
++		return fmt.Errorf("MCS Label already exists")
++	}
++	state.mcsList[mcs] = true
++	return nil
++}
++
++func mcsDelete(mcs string) {
++	state.Lock()
++	defer state.Unlock()
++	state.mcsList[mcs] = false
++}
++
++func intToMcs(id int, catRange uint32) string {
++	var (
++		SETSIZE = int(catRange)
++		TIER    = SETSIZE
++		ORD     = id
++	)
++
++	if id < 1 || id > 523776 {
++		return ""
++	}
++
++	for ORD > TIER {
++		ORD = ORD - TIER
++		TIER--
++	}
++	TIER = SETSIZE - TIER
++	ORD = ORD + TIER
++	return fmt.Sprintf("s0:c%d,c%d", TIER, ORD)
++}
++
++func uniqMcs(catRange uint32) string {
++	var (
++		n      uint32
++		c1, c2 uint32
++		mcs    string
++	)
++
++	for {
++		binary.Read(rand.Reader, binary.LittleEndian, &n)
++		c1 = n % catRange
++		binary.Read(rand.Reader, binary.LittleEndian, &n)
++		c2 = n % catRange
++		if c1 == c2 {
++			continue
++		} else {
++			if c1 > c2 {
++				c1, c2 = c2, c1
++			}
++		}
++		mcs = fmt.Sprintf("s0:c%d,c%d", c1, c2)
++		if err := mcsAdd(mcs); err != nil {
++			continue
++		}
++		break
++	}
++	return mcs
++}
++
++/*
++ReleaseLabel will unreserve the MLS/MCS Level field of the specified label.
++Allowing it to be used by another process.
++*/
++func ReleaseLabel(label string) {
++	if len(label) != 0 {
++		con := strings.SplitN(label, ":", 4)
++		mcsDelete(con[3])
++	}
++}
++
++var roFileLabel string
++
++// ROFileLabel returns the specified SELinux readonly file label
++func ROFileLabel() (fileLabel string) {
++	return roFileLabel
++}
++
++/*
++ContainerLabels returns an allocated processLabel and fileLabel to be used for
++container labeling by the calling process.
++*/
++func ContainerLabels() (processLabel string, fileLabel string) {
++	var (
++		val, key string
++		bufin    *bufio.Reader
++	)
++
++	if !GetEnabled() {
++		return "", ""
++	}
++	lxcPath := fmt.Sprintf("%s/contexts/lxc_contexts", getSELinuxPolicyRoot())
++	in, err := os.Open(lxcPath)
++	if err != nil {
++		return "", ""
++	}
++	defer in.Close()
++
++	bufin = bufio.NewReader(in)
++
++	for done := false; !done; {
++		var line string
++		if line, err = bufin.ReadString('\n'); err != nil {
++			if err == io.EOF {
++				done = true
++			} else {
++				goto exit
++			}
++		}
++		line = strings.TrimSpace(line)
++		if len(line) == 0 {
++			// Skip blank lines
++			continue
++		}
++		if line[0] == ';' || line[0] == '#' {
++			// Skip comments
++			continue
++		}
++		if groups := assignRegex.FindStringSubmatch(line); groups != nil {
++			key, val = strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
++			if key == "process" {
++				processLabel = strings.Trim(val, "\"")
++			}
++			if key == "file" {
++				fileLabel = strings.Trim(val, "\"")
++			}
++			if key == "ro_file" {
++				roFileLabel = strings.Trim(val, "\"")
++			}
++		}
++	}
++
++	if processLabel == "" || fileLabel == "" {
++		return "", ""
++	}
++
++	if roFileLabel == "" {
++		roFileLabel = fileLabel
++	}
++exit:
++	mcs := uniqMcs(1024)
++	scon := NewContext(processLabel)
++	scon["level"] = mcs
++	processLabel = scon.Get()
++	scon = NewContext(fileLabel)
++	scon["level"] = mcs
++	fileLabel = scon.Get()
++	return processLabel, fileLabel
++}
++
++// SecurityCheckContext validates that the SELinux label is understood by the kernel
++func SecurityCheckContext(val string) error {
++	return writeCon(fmt.Sprintf("%s.context", selinuxPath), val)
++}
++
++/*
++CopyLevel returns a label with the MLS/MCS level from src label replaces on
++the dest label.
++*/
++func CopyLevel(src, dest string) (string, error) {
++	if src == "" {
++		return "", nil
++	}
++	if err := SecurityCheckContext(src); err != nil {
++		return "", err
++	}
++	if err := SecurityCheckContext(dest); err != nil {
++		return "", err
++	}
++	scon := NewContext(src)
++	tcon := NewContext(dest)
++	mcsDelete(tcon["level"])
++	mcsAdd(scon["level"])
++	tcon["level"] = scon["level"]
++	return tcon.Get(), nil
++}
++
++// Prevent users from relabing system files
++func badPrefix(fpath string) error {
++	var badprefixes = []string{"/usr"}
++
++	for _, prefix := range badprefixes {
++		if fpath == prefix || strings.HasPrefix(fpath, fmt.Sprintf("%s/", prefix)) {
++			return fmt.Errorf("relabeling content in %s is not allowed", prefix)
++		}
++	}
++	return nil
++}
++
++// Chcon changes the fpath file object to the SELinux label label.
++// If the fpath is a directory and recurse is true Chcon will walk the
++// directory tree setting the label
++func Chcon(fpath string, label string, recurse bool) error {
++	if label == "" {
++		return nil
++	}
++	if err := badPrefix(fpath); err != nil {
++		return err
++	}
++	callback := func(p string, info os.FileInfo, err error) error {
++		return SetFileLabel(p, label)
++	}
++
++	if recurse {
++		return filepath.Walk(fpath, callback)
++	}
++
++	return SetFileLabel(fpath, label)
++}
++
++// DupSecOpt takes an SELinux process label and returns security options that
++// can will set the SELinux Type and Level for future container processes
++func DupSecOpt(src string) []string {
++	if src == "" {
++		return nil
++	}
++	con := NewContext(src)
++	if con["user"] == "" ||
++		con["role"] == "" ||
++		con["type"] == "" ||
++		con["level"] == "" {
++		return nil
++	}
++	return []string{"user:" + con["user"],
++		"role:" + con["role"],
++		"type:" + con["type"],
++		"level:" + con["level"]}
++}
++
++// DisableSecOpt returns a security opt that can be used to disabling SELinux
++// labeling support for future container processes
++func DisableSecOpt() []string {
++	return []string{"disable"}
++}
+diff --git a/vendor/github.com/opencontainers/selinux/go-selinux/xattrs.go b/vendor/github.com/opencontainers/selinux/go-selinux/xattrs.go
+new file mode 100644
+index 0000000..7f2ef85
+--- /dev/null
++++ b/vendor/github.com/opencontainers/selinux/go-selinux/xattrs.go
+@@ -0,0 +1,78 @@
++// +build linux
++
++package selinux
++
++import (
++	"syscall"
++	"unsafe"
++)
++
++var _zero uintptr
++
++// Returns a []byte slice if the xattr is set and nil otherwise
++// Requires path and its attribute as arguments
++func lgetxattr(path string, attr string) ([]byte, error) {
++	var sz int
++	pathBytes, err := syscall.BytePtrFromString(path)
++	if err != nil {
++		return nil, err
++	}
++	attrBytes, err := syscall.BytePtrFromString(attr)
++	if err != nil {
++		return nil, err
++	}
++
++	// Start with a 128 length byte array
++	sz = 128
++	dest := make([]byte, sz)
++	destBytes := unsafe.Pointer(&dest[0])
++	_sz, _, errno := syscall.Syscall6(syscall.SYS_LGETXATTR, uintptr(unsafe.Pointer(pathBytes)), uintptr(unsafe.Pointer(attrBytes)), uintptr(destBytes), uintptr(len(dest)), 0, 0)
++
++	switch {
++	case errno == syscall.ENODATA:
++		return nil, errno
++	case errno == syscall.ENOTSUP:
++		return nil, errno
++	case errno == syscall.ERANGE:
++		// 128 byte array might just not be good enough,
++		// A dummy buffer is used ``uintptr(0)`` to get real size
++		// of the xattrs on disk
++		_sz, _, errno = syscall.Syscall6(syscall.SYS_LGETXATTR, uintptr(unsafe.Pointer(pathBytes)), uintptr(unsafe.Pointer(attrBytes)), uintptr(unsafe.Pointer(nil)), uintptr(0), 0, 0)
++		sz = int(_sz)
++		if sz < 0 {
++			return nil, errno
++		}
++		dest = make([]byte, sz)
++		destBytes := unsafe.Pointer(&dest[0])
++		_sz, _, errno = syscall.Syscall6(syscall.SYS_LGETXATTR, uintptr(unsafe.Pointer(pathBytes)), uintptr(unsafe.Pointer(attrBytes)), uintptr(destBytes), uintptr(len(dest)), 0, 0)
++		if errno != 0 {
++			return nil, errno
++		}
++	case errno != 0:
++		return nil, errno
++	}
++	sz = int(_sz)
++	return dest[:sz], nil
++}
++
++func lsetxattr(path string, attr string, data []byte, flags int) error {
++	pathBytes, err := syscall.BytePtrFromString(path)
++	if err != nil {
++		return err
++	}
++	attrBytes, err := syscall.BytePtrFromString(attr)
++	if err != nil {
++		return err
++	}
++	var dataBytes unsafe.Pointer
++	if len(data) > 0 {
++		dataBytes = unsafe.Pointer(&data[0])
++	} else {
++		dataBytes = unsafe.Pointer(&_zero)
++	}
++	_, _, errno := syscall.Syscall6(syscall.SYS_LSETXATTR, uintptr(unsafe.Pointer(pathBytes)), uintptr(unsafe.Pointer(attrBytes)), uintptr(dataBytes), uintptr(len(data)), uintptr(flags), 0)
++	if errno != 0 {
++		return errno
++	}
++	return nil
++}
+-- 
+2.7.4.3
+

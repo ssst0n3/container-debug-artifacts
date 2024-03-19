@@ -1,0 +1,40 @@
+From 9421de9838d904c5eea40f0bd0cd50a00157392f Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Mon, 5 Mar 2018 21:15:15 +0800
+Subject: [PATCH 85/94] runc:  do not setup sysctl in runc when userns
+ enabled
+
+reason:when userns enabled, runc will run as normal user, it has
+no rights to setup sysctl even the ipcns sysctl. let docker-hooks do this job.
+
+Change-Id: Ia77b8c1bf4255973736f04c0962eae722ed9683e
+Signed-off-by: gus.gao <gus.gao@huawei.com>
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ libcontainer/standard_init_linux.go | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index 18506af..fd836f3 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -107,10 +107,12 @@ func (l *linuxStandardInit) Init() error {
+ 	if err := label.SetProcessLabel(l.config.ProcessLabel); err != nil {
+ 		return err
+ 	}
+-
+-	for key, value := range l.config.Config.Sysctl {
+-		if err := writeSystemProperty(key, value); err != nil {
+-			return err
++	// when userns enabled, write to sysctl will fail, let docker-hooks do this job
++	if len(l.config.Config.UidMappings) == 0 && len(l.config.Config.GidMappings) == 0 {
++		for key, value := range l.config.Config.Sysctl {
++			if err := writeSystemProperty(key, value); err != nil {
++				return err
++			}
+ 		}
+ 	}
+ 	for _, path := range l.config.Config.ReadonlyPaths {
+-- 
+2.7.4.3
+

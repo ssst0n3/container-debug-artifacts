@@ -1,0 +1,40 @@
+From 6e35f145221347264ea5d4814308ab0624725024 Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Tue, 2 Apr 2019 10:00:20 +0800
+Subject: [PATCH] runc:  fix --read-only containers under
+ --userns-remap
+
+reason:fix --read-only containers under --userns-remap
+cherry-pick from:
+	https://github.com/opencontainers/runc/pull/1572
+
+Change-Id: I0f823caf1e72e4d61df9abe5f97fa5605425fd2c
+Signed-off-by: Tycho Andersen <tycho@docker.com>
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ libcontainer/rootfs_linux.go | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 53797e9..18a25f2 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -769,7 +769,14 @@ func remountReadonly(m *configs.Mount) error {
+ 		flags = m.Flags
+ 	)
+ 	for i := 0; i < 5; i++ {
+-		if err := syscall.Mount("", dest, "", uintptr(flags|syscall.MS_REMOUNT|syscall.MS_RDONLY), ""); err != nil {
++		// There is a special case in the kernel for
++		// MS_REMOUNT | MS_BIND, which allows us to change only the
++		// flags even as an unprivileged user (i.e. user namespace)
++		// assuming we don't drop any security related flags (nodev,
++		// nosuid, etc.). So, let's use that case so that we can do
++		// this re-mount without failing in a userns.
++		flags |= syscall.MS_REMOUNT | syscall.MS_BIND | syscall.MS_RDONLY
++		if err := syscall.Mount("", dest, "", uintptr(flags), ""); err != nil {
+ 			switch err {
+ 			case syscall.EBUSY:
+ 				time.Sleep(100 * time.Millisecond)
+-- 
+1.8.3.1
+

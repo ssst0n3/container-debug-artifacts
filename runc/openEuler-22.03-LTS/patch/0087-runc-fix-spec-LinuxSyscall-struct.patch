@@ -1,0 +1,48 @@
+From 23829a0c51a77222c842b0a1d277e4738ad22942 Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Sun, 3 Feb 2019 09:26:44 +0800
+Subject: [PATCH 87/94] runc:  fix spec LinuxSyscall struct
+
+reason:fix spec LinuxSyscall struct
+
+Change-Id: Iab6d095b43c062ad72aad8f7f1f9206f46a4f88d
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ script/runc-euleros.spec                                         | 2 +-
+ vendor/github.com/opencontainers/runtime-spec/specs-go/config.go | 9 +++++----
+ 2 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index bcbcff1..b3db2ab 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 18%{?dist}
++Release: 19%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+diff --git a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+index 603ecf4..8439744 100644
+--- a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
++++ b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+@@ -554,8 +554,9 @@ type LinuxSeccompArg struct {
+ 
+ // LinuxSyscall is used to match a syscall in Seccomp
+ type LinuxSyscall struct {
+-	Names   []string           `json:"names"`
+-	Action  LinuxSeccompAction `json:"action"`
+-	Args    []LinuxSeccompArg  `json:"args"`
+-	Comment string             `json:"comment"`
++	Names    []string           `json:"names"`
++	Action   LinuxSeccompAction `json:"action"`
++	Priority uint8              `json:"priority,omitempty"`
++	Args     []LinuxSeccompArg  `json:"args"`
++	Comment  string             `json:"comment"`
+ }
+-- 
+2.7.4.3
+

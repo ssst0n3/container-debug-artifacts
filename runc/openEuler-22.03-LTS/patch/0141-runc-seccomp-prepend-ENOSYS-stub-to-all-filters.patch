@@ -1,0 +1,3656 @@
+From 66e24461dd0fd02b1bdd33c15f43e96b19190b2e Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <cyphar@cyphar.com>
+Date: Sun, 17 Jan 2021 18:25:34 +1100
+Subject: [PATCH] seccomp: prepend -ENOSYS stub to all filters
+
+Having -EPERM is the default was a fairly significant mistake from a
+future-proofing standpoint in that it makes any new syscall return a
+non-ignorable error (from glibc's point of view). We need to correct
+this now because faccessat2(2) is something glibc critically needs to
+have support for, but they're blocked on container runtimes because we
+return -EPERM unconditionally (leading to confusion in glibc). This is
+also a problem we're probably going to keep running into in the future.
+
+Unfortunately there are several issues which stop us from having a clean
+solution to this problem:
+
+ 1. libseccomp has several limitations which require us to emulate
+    behaviour we want:
+
+    a. We cannot do logic based on syscall number, meaning we cannot
+       specify a "largest known syscall number";
+    b. libseccomp doesn't know in which kernel version a syscall was
+       added, and has no API for "minimum kernel version" so we cannot
+       simply ask libseccomp to generate sane -ENOSYS rules for us.
+    c. Additional seccomp rules for the same syscall are not treated as
+       distinct rules -- if rules overlap, seccomp will merge them. This
+       means we cannot add per-syscall -EPERM fallbacks;
+    d. There is no inverse operation for SCMP_CMP_MASKED_EQ;
+    e. libseccomp does not allow you to specify multiple rules for a
+       single argument, making it impossible to invert OR rules for
+       arguments.
+
+ 2. The runtime-spec does not have any way of specifying:
+
+    a. The errno for the default action;
+    b. The minimum kernel version or "newest syscall at time of profile
+       creation"; nor
+    c. Which syscalls were intentionally excluded from the allow list
+       (weird syscalls that are no longer used were excluded entirely,
+       but Docker et al expect those syscalls to get EPERM not ENOSYS).
+
+ 3. Certain syscalls should not return -ENOSYS (especially only for
+    certain argument combinations) because this could also trigger glibc
+    confusion. This means we have to return -EPERM for certain syscalls
+    but not as a global default.
+
+ 4. There is not an obvious (and reasonable) upper limit to syscall
+    numbers, so we cannot create a set of rules for each syscall above
+    the largest syscall number in libseccomp. This means we must handle
+    inverse rules as described below.
+
+ 5. Any syscall can be specified multiple times, which can make
+    generation of hotfix rules much harder.
+
+As a result, we have to work around all of these things by coming up
+with a heuristic to stop the bleeding. In the future we could hopefully
+improve the situation in the runtime-spec and libseccomp.
+
+The solution applied here is to prepend a "stub" filter which returns
+-ENOSYS if the requested syscall has a larger syscall number than any
+syscall mentioned in the filter. The reason for this specific rule is
+that syscall numbers are (roughly) allocated sequentially and thus newer
+syscalls will (usually) have a larger syscall number -- thus causing our
+filters to produce -ENOSYS if the filter was written before the syscall
+existed.
+
+Sadly this is not a perfect solution because syscalls can be added
+out-of-order and the syscall table can contain holes for several
+releases. Unfortuntely we do not have a nicer solution at the moment
+because there is no library which provides information about which Linux
+version a syscall was introduced in. Until that exists, this workaround
+will have to be good enough.
+
+The above behaviour only happens if the default action is a blocking
+action (in other words it is not SCMP_ACT_LOG or SCMP_ACT_ALLOW). If the
+default action is permissive then we don't do any patching.
+
+Signed-off-by: Aleksa Sarai <cyphar@cyphar.com>
+---
+ libcontainer/seccomp/patchbpf/enosys_linux.go | 628 +++++++++++++++
+ .../seccomp/patchbpf/enosys_linux_test.go     | 280 +++++++
+ .../seccomp/patchbpf/enosys_unsupported.go    |  18 +
+ libcontainer/seccomp/seccomp_linux.go         |  12 +-
+ libcontainer/utils/utils.go                   |  15 +
+ .../seccomp/libseccomp-golang/CHANGELOG       |  17 +
+ .../seccomp/libseccomp-golang/Makefile        |  26 +
+ .../seccomp/libseccomp-golang/README          |  25 +
+ .../libseccomp-golang/SUBMITTING_PATCHES      | 112 +++
+ .../seccomp/libseccomp-golang/seccomp.go      | 160 +++-
+ .../libseccomp-golang/seccomp_internal.go     | 243 +++---
+ vendor/golang.org/x/net/AUTHORS               |   3 +
+ vendor/golang.org/x/net/CONTRIBUTORS          |   3 +
+ vendor/golang.org/x/net/LICENSE               |  27 +
+ vendor/golang.org/x/net/PATENTS               |  22 +
+ vendor/golang.org/x/net/bpf/asm.go            |  41 +
+ vendor/golang.org/x/net/bpf/constants.go      | 222 ++++++
+ vendor/golang.org/x/net/bpf/doc.go            |  82 ++
+ vendor/golang.org/x/net/bpf/instructions.go   | 726 ++++++++++++++++++
+ vendor/golang.org/x/net/bpf/setter.go         |  10 +
+ vendor/golang.org/x/net/bpf/vm.go             | 150 ++++
+ .../golang.org/x/net/bpf/vm_instructions.go   | 182 +++++
+ 22 files changed, 2867 insertions(+), 137 deletions(-)
+ create mode 100644 libcontainer/seccomp/patchbpf/enosys_linux.go
+ create mode 100644 libcontainer/seccomp/patchbpf/enosys_linux_test.go
+ create mode 100644 libcontainer/seccomp/patchbpf/enosys_unsupported.go
+ create mode 100644 vendor/github.com/seccomp/libseccomp-golang/CHANGELOG
+ create mode 100644 vendor/github.com/seccomp/libseccomp-golang/Makefile
+ create mode 100644 vendor/github.com/seccomp/libseccomp-golang/SUBMITTING_PATCHES
+ create mode 100644 vendor/golang.org/x/net/AUTHORS
+ create mode 100644 vendor/golang.org/x/net/CONTRIBUTORS
+ create mode 100644 vendor/golang.org/x/net/LICENSE
+ create mode 100644 vendor/golang.org/x/net/PATENTS
+ create mode 100644 vendor/golang.org/x/net/bpf/asm.go
+ create mode 100644 vendor/golang.org/x/net/bpf/constants.go
+ create mode 100644 vendor/golang.org/x/net/bpf/doc.go
+ create mode 100644 vendor/golang.org/x/net/bpf/instructions.go
+ create mode 100644 vendor/golang.org/x/net/bpf/setter.go
+ create mode 100644 vendor/golang.org/x/net/bpf/vm.go
+ create mode 100644 vendor/golang.org/x/net/bpf/vm_instructions.go
+
+diff --git a/libcontainer/seccomp/patchbpf/enosys_linux.go b/libcontainer/seccomp/patchbpf/enosys_linux.go
+new file mode 100644
+index 00000000..b3c89cf3
+--- /dev/null
++++ b/libcontainer/seccomp/patchbpf/enosys_linux.go
+@@ -0,0 +1,628 @@
++// +build linux,cgo,seccomp
++
++package patchbpf
++
++import (
++	"encoding/binary"
++	"io"
++	"os"
++	"runtime"
++	"unsafe"
++
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/utils"
++
++	"github.com/pkg/errors"
++	libseccomp "github.com/seccomp/libseccomp-golang"
++	"github.com/Sirupsen/logrus"
++	"golang.org/x/net/bpf"
++	"golang.org/x/sys/unix"
++)
++
++// #cgo pkg-config: libseccomp
++/*
++#include <errno.h>
++#include <stdint.h>
++#include <seccomp.h>
++#include <linux/seccomp.h>
++
++const uint32_t C_ACT_ERRNO_ENOSYS = SCMP_ACT_ERRNO(ENOSYS);
++
++// Copied from <linux/seccomp.h>.
++
++#ifndef SECCOMP_SET_MODE_FILTER
++#	define SECCOMP_SET_MODE_FILTER 1
++#endif
++const uintptr_t C_SET_MODE_FILTER = SECCOMP_SET_MODE_FILTER;
++
++#ifndef SECCOMP_FILTER_FLAG_LOG
++#	define SECCOMP_FILTER_FLAG_LOG (1UL << 1)
++#endif
++const uintptr_t C_FILTER_FLAG_LOG = SECCOMP_FILTER_FLAG_LOG;
++
++// We use the AUDIT_ARCH_* values because those are the ones used by the kernel
++// and SCMP_ARCH_* sometimes has fake values (such as SCMP_ARCH_X32). But we
++// use <seccomp.h> so we get libseccomp's fallback definitions of AUDIT_ARCH_*.
++
++const uint32_t C_AUDIT_ARCH_I386         = AUDIT_ARCH_I386;
++const uint32_t C_AUDIT_ARCH_X86_64       = AUDIT_ARCH_X86_64;
++const uint32_t C_AUDIT_ARCH_ARM          = AUDIT_ARCH_ARM;
++const uint32_t C_AUDIT_ARCH_AARCH64      = AUDIT_ARCH_AARCH64;
++const uint32_t C_AUDIT_ARCH_MIPS         = AUDIT_ARCH_MIPS;
++const uint32_t C_AUDIT_ARCH_MIPS64       = AUDIT_ARCH_MIPS64;
++const uint32_t C_AUDIT_ARCH_MIPS64N32    = AUDIT_ARCH_MIPS64N32;
++const uint32_t C_AUDIT_ARCH_MIPSEL       = AUDIT_ARCH_MIPSEL;
++const uint32_t C_AUDIT_ARCH_MIPSEL64     = AUDIT_ARCH_MIPSEL64;
++const uint32_t C_AUDIT_ARCH_MIPSEL64N32  = AUDIT_ARCH_MIPSEL64N32;
++const uint32_t C_AUDIT_ARCH_PPC          = AUDIT_ARCH_PPC;
++const uint32_t C_AUDIT_ARCH_PPC64        = AUDIT_ARCH_PPC64;
++const uint32_t C_AUDIT_ARCH_PPC64LE      = AUDIT_ARCH_PPC64LE;
++const uint32_t C_AUDIT_ARCH_S390         = AUDIT_ARCH_S390;
++const uint32_t C_AUDIT_ARCH_S390X        = AUDIT_ARCH_S390X;
++*/
++import "C"
++
++var retErrnoEnosys = uint32(C.C_ACT_ERRNO_ENOSYS)
++
++func isAllowAction(action configs.Action) bool {
++	switch action {
++	// Trace is considered an "allow" action because a good tracer should
++	// support future syscalls (by handling -ENOSYS on its own), and giving
++	// -ENOSYS will be disruptive for emulation.
++	case configs.Allow, configs.Trace:
++		return true
++	default:
++		return false
++	}
++}
++
++func parseProgram(rdr io.Reader) ([]bpf.RawInstruction, error) {
++	var program []bpf.RawInstruction
++loop:
++	for {
++		// Read the next instruction. We have to use NativeEndian because
++		// seccomp_export_bpf outputs the program in *host* endian-ness.
++		var insn unix.SockFilter
++		if err := binary.Read(rdr, utils.NativeEndian, &insn); err != nil {
++			switch err {
++			case io.EOF:
++				// Parsing complete.
++				break loop
++			case io.ErrUnexpectedEOF:
++				// Parsing stopped mid-instruction.
++				return nil, errors.Wrap(err, "program parsing halted mid-instruction")
++			default:
++				// All other errors.
++				return nil, errors.Wrap(err, "parsing instructions")
++			}
++		}
++		program = append(program, bpf.RawInstruction{
++			Op: insn.Code,
++			Jt: insn.Jt,
++			Jf: insn.Jf,
++			K:  insn.K,
++		})
++	}
++	return program, nil
++}
++
++func disassembleFilter(filter *libseccomp.ScmpFilter) ([]bpf.Instruction, error) {
++	rdr, wtr, err := os.Pipe()
++	if err != nil {
++		return nil, errors.Wrap(err, "creating scratch pipe")
++	}
++	defer wtr.Close()
++	defer rdr.Close()
++
++	if err := filter.ExportBPF(wtr); err != nil {
++		return nil, errors.Wrap(err, "exporting BPF")
++	}
++	// Close so that the reader actually gets EOF.
++	_ = wtr.Close()
++
++	// Parse the instructions.
++	rawProgram, err := parseProgram(rdr)
++	if err != nil {
++		return nil, errors.Wrap(err, "parsing generated BPF filter")
++	}
++	program, ok := bpf.Disassemble(rawProgram)
++	if !ok {
++		return nil, errors.Errorf("could not disassemble entire BPF filter")
++	}
++	return program, nil
++}
++
++type nativeArch uint32
++
++const invalidArch nativeArch = 0
++
++func archToNative(arch libseccomp.ScmpArch) (nativeArch, error) {
++	switch arch {
++	case libseccomp.ArchNative:
++		// Convert to actual native architecture.
++		arch, err := libseccomp.GetNativeArch()
++		if err != nil {
++			return invalidArch, errors.Wrap(err, "get native arch")
++		}
++		return archToNative(arch)
++	case libseccomp.ArchX86:
++		return nativeArch(C.C_AUDIT_ARCH_I386), nil
++	case libseccomp.ArchAMD64, libseccomp.ArchX32:
++		// NOTE: x32 is treated like x86_64 except all x32 syscalls have the
++		//       30th bit of the syscall number set to indicate that it's not a
++		//       normal x86_64 syscall.
++		return nativeArch(C.C_AUDIT_ARCH_X86_64), nil
++	case libseccomp.ArchARM:
++		return nativeArch(C.C_AUDIT_ARCH_ARM), nil
++	case libseccomp.ArchARM64:
++		return nativeArch(C.C_AUDIT_ARCH_AARCH64), nil
++	case libseccomp.ArchMIPS:
++		return nativeArch(C.C_AUDIT_ARCH_MIPS), nil
++	case libseccomp.ArchMIPS64:
++		return nativeArch(C.C_AUDIT_ARCH_MIPS64), nil
++	case libseccomp.ArchMIPS64N32:
++		return nativeArch(C.C_AUDIT_ARCH_MIPS64N32), nil
++	case libseccomp.ArchMIPSEL:
++		return nativeArch(C.C_AUDIT_ARCH_MIPSEL), nil
++	case libseccomp.ArchMIPSEL64:
++		return nativeArch(C.C_AUDIT_ARCH_MIPSEL64), nil
++	case libseccomp.ArchMIPSEL64N32:
++		return nativeArch(C.C_AUDIT_ARCH_MIPSEL64N32), nil
++	case libseccomp.ArchPPC:
++		return nativeArch(C.C_AUDIT_ARCH_PPC), nil
++	case libseccomp.ArchPPC64:
++		return nativeArch(C.C_AUDIT_ARCH_PPC64), nil
++	case libseccomp.ArchPPC64LE:
++		return nativeArch(C.C_AUDIT_ARCH_PPC64LE), nil
++	case libseccomp.ArchS390:
++		return nativeArch(C.C_AUDIT_ARCH_S390), nil
++	case libseccomp.ArchS390X:
++		return nativeArch(C.C_AUDIT_ARCH_S390X), nil
++	default:
++		return invalidArch, errors.Errorf("unknown architecture: %v", arch)
++	}
++}
++
++type lastSyscallMap map[nativeArch]map[libseccomp.ScmpArch]libseccomp.ScmpSyscall
++
++// Figure out largest syscall number referenced in the filter for each
++// architecture. We will be generating code based on the native architecture
++// representation, but SCMP_ARCH_X32 means we have to track cases where the
++// same architecture has different largest syscalls based on the mode.
++func findLastSyscalls(config *configs.Seccomp) (lastSyscallMap, error) {
++	lastSyscalls := make(lastSyscallMap)
++	// Only loop over architectures which are present in the filter. Any other
++	// architectures will get the libseccomp bad architecture action anyway.
++	for _, ociArch := range config.Architectures {
++		arch, err := libseccomp.GetArchFromString(ociArch)
++		if err != nil {
++			return nil, errors.Wrap(err, "validating seccomp architecture")
++		}
++
++		// Map native architecture to a real architecture value to avoid
++		// doubling-up the lastSyscall mapping.
++		if arch == libseccomp.ArchNative {
++			nativeArch, err := libseccomp.GetNativeArch()
++			if err != nil {
++				return nil, errors.Wrap(err, "get native arch")
++			}
++			arch = nativeArch
++		}
++
++		// Figure out native architecture representation of the architecture.
++		nativeArch, err := archToNative(arch)
++		if err != nil {
++			return nil, errors.Wrapf(err, "cannot map architecture %v to AUDIT_ARCH_ constant", arch)
++		}
++
++		if _, ok := lastSyscalls[nativeArch]; !ok {
++			lastSyscalls[nativeArch] = map[libseccomp.ScmpArch]libseccomp.ScmpSyscall{}
++		}
++		if _, ok := lastSyscalls[nativeArch][arch]; ok {
++			// Because of ArchNative we may hit the same entry multiple times.
++			// Just skip it if we've seen this (nativeArch, ScmpArch)
++			// combination before.
++			continue
++		}
++
++		// Find the largest syscall in the filter for this architecture.
++		var largestSyscall libseccomp.ScmpSyscall
++		for _, rule := range config.Syscalls {
++			sysno, err := libseccomp.GetSyscallFromNameByArch(rule.Name, arch)
++			if err != nil {
++				// Ignore unknown syscalls.
++				continue
++			}
++			if sysno > largestSyscall {
++				largestSyscall = sysno
++			}
++		}
++		if largestSyscall != 0 {
++			lastSyscalls[nativeArch][arch] = largestSyscall
++		} else {
++			logrus.Warnf("could not find any syscalls for arch %s", ociArch)
++			delete(lastSyscalls[nativeArch], arch)
++		}
++	}
++	return lastSyscalls, nil
++}
++
++// FIXME FIXME FIXME
++//
++// This solution is less than ideal. In the future it would be great to have
++// per-arch information about which syscalls were added in which kernel
++// versions so we can create far more accurate filter rules (handling holes in
++// the syscall table and determining -ENOSYS requirements based on kernel
++// minimum version alone.
++//
++// This implementation can in principle cause issues with syscalls like
++// close_range(2) which were added out-of-order in the syscall table between
++// kernel releases.
++func generateEnosysStub(lastSyscalls lastSyscallMap) ([]bpf.Instruction, error) {
++	// A jump-table for each nativeArch used to generate the initial
++	// conditional jumps -- measured from the *END* of the program so they
++	// remain valid after prepending to the tail.
++	archJumpTable := map[nativeArch]uint32{}
++
++	// Generate our own -ENOSYS rules for each architecture. They have to be
++	// generated in reverse (prepended to the tail of the program) because the
++	// JumpIf jumps need to be computed from the end of the program.
++	programTail := []bpf.Instruction{
++		// Fall-through rules jump into the filter.
++		bpf.Jump{Skip: 1},
++		// Rules which jump to here get -ENOSYS.
++		bpf.RetConstant{Val: retErrnoEnosys},
++	}
++
++	// Generate the syscall -ENOSYS rules.
++	for nativeArch, maxSyscalls := range lastSyscalls {
++		// The number of instructions from the tail of this section which need
++		// to be jumped in order to reach the -ENOSYS return. If the section
++		// does not jump, it will fall through to the actual filter.
++		baseJumpEnosys := uint32(len(programTail) - 1)
++		baseJumpFilter := baseJumpEnosys + 1
++
++		// Add the load instruction for the syscall number -- we jump here
++		// directly from the arch code so we need to do it here. Sadly we can't
++		// share this code between architecture branches.
++		section := []bpf.Instruction{
++			// load [0]
++			bpf.LoadAbsolute{Off: 0, Size: 4}, // NOTE: We assume sizeof(int) == 4.
++		}
++
++		switch len(maxSyscalls) {
++		case 0:
++			// No syscalls found for this arch -- skip it and move on.
++			continue
++		case 1:
++			// Get the only syscall in the map.
++			var sysno libseccomp.ScmpSyscall
++			for _, no := range maxSyscalls {
++				sysno = no
++			}
++
++			// The simplest case just boils down to a single jgt instruction,
++			// with special handling if baseJumpEnosys is larger than 255 (and
++			// thus a long jump is required).
++			var sectionTail []bpf.Instruction
++			if baseJumpEnosys+1 <= 255 {
++				sectionTail = []bpf.Instruction{
++					// jgt [syscall],[baseJumpEnosys+1]
++					bpf.JumpIf{
++						Cond:     bpf.JumpGreaterThan,
++						Val:      uint32(sysno),
++						SkipTrue: uint8(baseJumpEnosys + 1)},
++					// ja [baseJumpFilter]
++					bpf.Jump{Skip: baseJumpFilter},
++				}
++			} else {
++				sectionTail = []bpf.Instruction{
++					// jle [syscall],1
++					bpf.JumpIf{Cond: bpf.JumpLessOrEqual, Val: uint32(sysno), SkipTrue: 1},
++					// ja [baseJumpEnosys+1]
++					bpf.Jump{Skip: baseJumpEnosys + 1},
++					// ja [baseJumpFilter]
++					bpf.Jump{Skip: baseJumpFilter},
++				}
++			}
++
++			// If we're on x86 we need to add a check for x32 and if we're in
++			// the wrong mode we jump over the section.
++			if uint32(nativeArch) == uint32(C.C_AUDIT_ARCH_X86_64) {
++				// Grab the only architecture in the map.
++				var scmpArch libseccomp.ScmpArch
++				for arch := range maxSyscalls {
++					scmpArch = arch
++				}
++
++				// Generate a prefix to check the mode.
++				switch scmpArch {
++				case libseccomp.ArchAMD64:
++					sectionTail = append([]bpf.Instruction{
++						// jset (1<<30),[len(tail)-1]
++						bpf.JumpIf{Cond: bpf.JumpBitsSet,
++							Val:      1 << 30,
++							SkipTrue: uint8(len(sectionTail) - 1)},
++					}, sectionTail...)
++				case libseccomp.ArchX32:
++					sectionTail = append([]bpf.Instruction{
++						// jset (1<<30),0,[len(tail)-1]
++						bpf.JumpIf{Cond: bpf.JumpBitsNotSet,
++							Val:      1 << 30,
++							SkipTrue: uint8(len(sectionTail) - 1)},
++					}, sectionTail...)
++				default:
++					return nil, errors.Errorf("unknown amd64 native architecture %#x", scmpArch)
++				}
++			}
++
++			section = append(section, sectionTail...)
++		case 2:
++			// x32 and x86_64 are a unique case, we can't handle any others.
++			if uint32(nativeArch) != uint32(C.C_AUDIT_ARCH_X86_64) {
++				return nil, errors.Errorf("unknown architecture overlap on native arch %#x", nativeArch)
++			}
++
++			x32sysno, ok := maxSyscalls[libseccomp.ArchX32]
++			if !ok {
++				return nil, errors.Errorf("missing %v in overlapping x86_64 arch: %v", libseccomp.ArchX32, maxSyscalls)
++			}
++			x86sysno, ok := maxSyscalls[libseccomp.ArchAMD64]
++			if !ok {
++				return nil, errors.Errorf("missing %v in overlapping x86_64 arch: %v", libseccomp.ArchAMD64, maxSyscalls)
++			}
++
++			// The x32 ABI indicates that a syscall is being made by an x32
++			// process by setting the 30th bit of the syscall number, but we
++			// need to do some special-casing depending on whether we need to
++			// do long jumps.
++			if baseJumpEnosys+2 <= 255 {
++				// For the simple case we want to have something like:
++				//   jset (1<<30),1
++				//   jgt [x86 syscall],[baseJumpEnosys+2],1
++				//   jgt [x32 syscall],[baseJumpEnosys+1]
++				//   ja [baseJumpFilter]
++				section = append(section, []bpf.Instruction{
++					// jset (1<<30),1
++					bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 1 << 30, SkipTrue: 1},
++					// jgt [x86 syscall],[baseJumpEnosys+1],1
++					bpf.JumpIf{
++						Cond:     bpf.JumpGreaterThan,
++						Val:      uint32(x86sysno),
++						SkipTrue: uint8(baseJumpEnosys + 2), SkipFalse: 1},
++					// jgt [x32 syscall],[baseJumpEnosys]
++					bpf.JumpIf{
++						Cond:     bpf.JumpGreaterThan,
++						Val:      uint32(x32sysno),
++						SkipTrue: uint8(baseJumpEnosys + 1)},
++					// ja [baseJumpFilter]
++					bpf.Jump{Skip: baseJumpFilter},
++				}...)
++			} else {
++				// But if the [baseJumpEnosys+2] jump is larger than 255 we
++				// need to do a long jump like so:
++				//   jset (1<<30),1
++				//   jgt [x86 syscall],1,2
++				//   jle [x32 syscall],1
++				//   ja [baseJumpEnosys+1]
++				//   ja [baseJumpFilter]
++				section = append(section, []bpf.Instruction{
++					// jset (1<<30),1
++					bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 1 << 30, SkipTrue: 1},
++					// jgt [x86 syscall],1,2
++					bpf.JumpIf{
++						Cond:     bpf.JumpGreaterThan,
++						Val:      uint32(x86sysno),
++						SkipTrue: 1, SkipFalse: 2},
++					// jle [x32 syscall],[baseJumpEnosys]
++					bpf.JumpIf{
++						Cond:     bpf.JumpLessOrEqual,
++						Val:      uint32(x32sysno),
++						SkipTrue: 1},
++					// ja [baseJumpEnosys+1]
++					bpf.Jump{Skip: baseJumpEnosys + 1},
++					// ja [baseJumpFilter]
++					bpf.Jump{Skip: baseJumpFilter},
++				}...)
++			}
++		default:
++			return nil, errors.Errorf("invalid number of architecture overlaps: %v", len(maxSyscalls))
++		}
++
++		// Prepend this section to the tail.
++		programTail = append(section, programTail...)
++
++		// Update jump table.
++		archJumpTable[nativeArch] = uint32(len(programTail))
++	}
++
++	// Add a dummy "jump to filter" for any architecture we might miss below.
++	// Such architectures will probably get the BadArch action of the filter
++	// regardless.
++	programTail = append([]bpf.Instruction{
++		// ja [end of stub and start of filter]
++		bpf.Jump{Skip: uint32(len(programTail))},
++	}, programTail...)
++
++	// Generate the jump rules for each architecture. This has to be done in
++	// reverse as well for the same reason as above. We add to programTail
++	// directly because the jumps are impacted by each architecture rule we add
++	// as well.
++	//
++	// TODO: Maybe we want to optimise to avoid long jumps here? So sort the
++	//       architectures based on how large the jumps are going to be, or
++	//       re-sort the candidate architectures each time to make sure that we
++	//       pick the largest jump which is going to be smaller than 255.
++	for nativeArch := range lastSyscalls {
++		// We jump forwards but the jump table is calculated from the *END*.
++		jump := uint32(len(programTail)) - archJumpTable[nativeArch]
++
++		// Same routine as above -- this is a basic jeq check, complicated
++		// slightly if it turns out that we need to do a long jump.
++		if jump <= 255 {
++			programTail = append([]bpf.Instruction{
++				// jeq [arch],[jump]
++				bpf.JumpIf{
++					Cond:     bpf.JumpEqual,
++					Val:      uint32(nativeArch),
++					SkipTrue: uint8(jump)},
++			}, programTail...)
++		} else {
++			programTail = append([]bpf.Instruction{
++				// jne [arch],1
++				bpf.JumpIf{
++					Cond:     bpf.JumpNotEqual,
++					Val:      uint32(nativeArch),
++					SkipTrue: 1},
++				// ja [jump]
++				bpf.Jump{Skip: jump},
++			}, programTail...)
++		}
++	}
++
++	// Prepend the load instruction for the architecture.
++	programTail = append([]bpf.Instruction{
++		// load [4]
++		bpf.LoadAbsolute{Off: 4, Size: 4}, // NOTE: We assume sizeof(int) == 4.
++	}, programTail...)
++
++	// And that's all folks!
++	return programTail, nil
++}
++
++func assemble(program []bpf.Instruction) ([]unix.SockFilter, error) {
++	rawProgram, err := bpf.Assemble(program)
++	if err != nil {
++		return nil, errors.Wrap(err, "assembling program")
++	}
++
++	// Convert to []unix.SockFilter for unix.SockFilter.
++	var filter []unix.SockFilter
++	for _, insn := range rawProgram {
++		filter = append(filter, unix.SockFilter{
++			Code: insn.Op,
++			Jt:   insn.Jt,
++			Jf:   insn.Jf,
++			K:    insn.K,
++		})
++	}
++	return filter, nil
++}
++
++func generatePatch(config *configs.Seccomp) ([]bpf.Instruction, error) {
++	// We only add the stub if the default action is not permissive.
++	if isAllowAction(config.DefaultAction) {
++		logrus.Debugf("seccomp: skipping -ENOSYS stub filter generation")
++		return nil, nil
++	}
++
++	lastSyscalls, err := findLastSyscalls(config)
++	if err != nil {
++		return nil, errors.Wrap(err, "finding last syscalls for -ENOSYS stub")
++	}
++	stubProgram, err := generateEnosysStub(lastSyscalls)
++	if err != nil {
++		return nil, errors.Wrap(err, "generating -ENOSYS stub")
++	}
++	return stubProgram, nil
++}
++
++func enosysPatchFilter(config *configs.Seccomp, filter *libseccomp.ScmpFilter) ([]unix.SockFilter, error) {
++	program, err := disassembleFilter(filter)
++	if err != nil {
++		return nil, errors.Wrap(err, "disassembling original filter")
++	}
++
++	patch, err := generatePatch(config)
++	if err != nil {
++		return nil, errors.Wrap(err, "generating patch for filter")
++	}
++	fullProgram := append(patch, program...)
++
++	logrus.Debugf("seccomp: prepending -ENOSYS stub filter to user filter...")
++	for idx, insn := range patch {
++		logrus.Debugf("  [%4.1d] %s", idx, insn)
++	}
++	logrus.Debugf("  [....] --- original filter ---")
++
++	fprog, err := assemble(fullProgram)
++	if err != nil {
++		return nil, errors.Wrap(err, "assembling modified filter")
++	}
++	return fprog, nil
++}
++
++func filterFlags(filter *libseccomp.ScmpFilter) (flags uint, noNewPrivs bool, err error) {
++	// Ignore the error since pre-2.4 libseccomp is treated as API level 0.
++	apiLevel, _ := libseccomp.GetApi()
++
++	noNewPrivs, err = filter.GetNoNewPrivsBit()
++	if err != nil {
++		return 0, false, errors.Wrap(err, "fetch no_new_privs filter bit")
++	}
++
++	if apiLevel >= 3 {
++		if logBit, err := filter.GetLogBit(); err != nil {
++			return 0, false, errors.Wrap(err, "fetch SECCOMP_FILTER_FLAG_LOG bit")
++		} else if logBit {
++			flags |= uint(C.C_FILTER_FLAG_LOG)
++		}
++	}
++
++	// TODO: Support seccomp flags not yet added to libseccomp-golang...
++	return
++}
++
++func sysSeccompSetFilter(flags uint, filter []unix.SockFilter) (err error) {
++	fprog := unix.SockFprog{
++		Len:    uint16(len(filter)),
++		Filter: &filter[0],
++	}
++	// If no seccomp flags were requested we can use the old-school prctl(2).
++	if flags == 0 {
++		err = unix.Prctl(unix.PR_SET_SECCOMP,
++			0x2,
++			uintptr(unsafe.Pointer(&fprog)), 0, 0)
++	} else {
++		_, _, err = unix.RawSyscall(unix.SYS_SECCOMP,
++			uintptr(C.C_SET_MODE_FILTER),
++			uintptr(flags), uintptr(unsafe.Pointer(&fprog)))
++	}
++	runtime.KeepAlive(filter)
++	runtime.KeepAlive(fprog)
++	return
++}
++
++// PatchAndLoad takes a seccomp configuration and a libseccomp filter which has
++// been pre-configured with the set of rules in the seccomp config. It then
++// patches said filter to handle -ENOSYS in a much nicer manner than the
++// default libseccomp default action behaviour, and loads the patched filter
++// into the kernel for the current process.
++func PatchAndLoad(config *configs.Seccomp, filter *libseccomp.ScmpFilter) error {
++	// Generate a patched filter.
++	fprog, err := enosysPatchFilter(config, filter)
++	if err != nil {
++		return errors.Wrap(err, "patching filter")
++	}
++
++	// Get the set of libseccomp flags set.
++	seccompFlags, noNewPrivs, err := filterFlags(filter)
++	if err != nil {
++		return errors.Wrap(err, "fetch seccomp filter flags")
++	}
++
++	// Set no_new_privs if it was requested, though in runc we handle
++	// no_new_privs separately so warn if we hit this path.
++	if noNewPrivs {
++		logrus.Warnf("potentially misconfigured filter -- setting no_new_privs in seccomp path")
++		if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
++			return errors.Wrap(err, "enable no_new_privs bit")
++		}
++	}
++
++	// Finally, load the filter.
++	if err := sysSeccompSetFilter(seccompFlags, fprog); err != nil {
++		return errors.Wrap(err, "loading seccomp filter")
++	}
++	return nil
++}
+diff --git a/libcontainer/seccomp/patchbpf/enosys_linux_test.go b/libcontainer/seccomp/patchbpf/enosys_linux_test.go
+new file mode 100644
+index 00000000..17b92af9
+--- /dev/null
++++ b/libcontainer/seccomp/patchbpf/enosys_linux_test.go
+@@ -0,0 +1,280 @@
++// +build linux,cgo,seccomp
++
++package patchbpf
++
++import (
++	"bytes"
++	"encoding/binary"
++	"fmt"
++	"testing"
++
++	"github.com/opencontainers/runc/libcontainer/configs"
++
++	libseccomp "github.com/seccomp/libseccomp-golang"
++	"golang.org/x/net/bpf"
++)
++
++type seccompData struct {
++	Syscall uint32 // NOTE: We assume sizeof(int) == 4.
++	Arch    uint32
++	IP      uint64
++	Args    [6]uint64
++}
++
++// mockSyscallPayload creates a fake seccomp_data struct with the given data.
++func mockSyscallPayload(t *testing.T, sysno libseccomp.ScmpSyscall, arch nativeArch, args ...uint64) []byte {
++	var buf bytes.Buffer
++
++	data := seccompData{
++		Syscall: uint32(sysno),
++		Arch:    uint32(arch),
++		IP:      0xDEADBEEFCAFE,
++	}
++
++	copy(data.Args[:], args)
++	if len(args) > 6 {
++		t.Fatalf("bad syscall payload: linux only supports 6-argument syscalls")
++	}
++
++	// NOTE: We use BigEndian here because golang.org/x/net/bpf assumes that
++	//       all payloads are big-endian while seccomp uses host endianness.
++	if err := binary.Write(&buf, binary.BigEndian, data); err != nil {
++		t.Fatalf("bad syscall payload: cannot write data: %v", err)
++	}
++	return buf.Bytes()
++}
++
++// retFallthrough is returned by the mockFilter. If a the mock filter returns
++// this value, it indicates "fallthrough to libseccomp-generated filter".
++const retFallthrough uint32 = 0xDEADBEEF
++
++// mockFilter returns a BPF VM that contains a mock filter with an -ENOSYS
++// stub. If the filter returns retFallthrough, the stub filter has permitted
++// the syscall to pass.
++func mockFilter(t *testing.T, config *configs.Seccomp) (*bpf.VM, []bpf.Instruction) {
++	patch, err := generatePatch(config)
++	if err != nil {
++		t.Fatalf("mock filter: generate enosys patch: %v", err)
++	}
++
++	program := append(patch, bpf.RetConstant{Val: retFallthrough})
++
++	vm, err := bpf.NewVM(program)
++	if err != nil {
++		t.Fatalf("mock filter: compile BPF VM: %v", err)
++	}
++	return vm, program
++}
++
++// fakeConfig generates a fake libcontainer seccomp configuration. The syscalls
++// are added with an action distinct from the default action.
++func fakeConfig(defaultAction configs.Action, explicitSyscalls []string, arches []string) *configs.Seccomp {
++	config := configs.Seccomp{
++		DefaultAction: defaultAction,
++		Architectures: arches,
++	}
++	syscallAction := configs.Allow
++	if syscallAction == defaultAction {
++		syscallAction = configs.Kill
++	}
++	for _, syscall := range explicitSyscalls {
++		config.Syscalls = append(config.Syscalls, &configs.Syscall{
++			Name:   syscall,
++			Action: syscallAction,
++		})
++	}
++	return &config
++}
++
++// List copied from <libcontainer/seccomp/config.go>.
++var testArches = []string{
++	"x86",
++	"amd64",
++	"x32",
++	"arm",
++	"arm64",
++	"mips",
++	"mips64",
++	"mips64n32",
++	"mipsel",
++	"mipsel64",
++	"mipsel64n32",
++	"ppc",
++	"ppc64",
++	"ppc64le",
++	"s390",
++	"s390x",
++}
++
++func archStringToNative(arch string) (nativeArch, error) {
++	scmpArch, err := libseccomp.GetArchFromString(arch)
++	if err != nil {
++		return 0, fmt.Errorf("unknown architecture %q: %v", arch, err)
++	}
++	return archToNative(scmpArch)
++}
++
++func testEnosysStub(t *testing.T, defaultAction configs.Action, arches []string) {
++	explicitSyscalls := []string{
++		"setns",
++		"kcmp",
++		"renameat2",
++		"copy_file_range",
++	}
++
++	implicitSyscalls := []string{
++		"clone",
++		"openat",
++		"read",
++		"write",
++	}
++
++	futureSyscalls := []libseccomp.ScmpSyscall{1000, 7331}
++
++	// Quick lookups for which arches are enabled.
++	archSet := map[string]bool{}
++	for _, arch := range arches {
++		archSet[arch] = true
++	}
++
++	for _, test := range []struct {
++		start, end int
++	}{
++		{0, 1}, // [setns]
++		{0, 2}, // [setns, process_vm_readv]
++		{1, 2}, // [process_vm_readv]
++		{1, 3}, // [process_vm_readv, renameat2, copy_file_range]
++		{1, 4}, // [process_vm_readv, renameat2, copy_file_range]
++		{3, 4}, // [copy_file_range]
++	} {
++		allowedSyscalls := explicitSyscalls[test.start:test.end]
++		config := fakeConfig(defaultAction, allowedSyscalls, arches)
++		filter, program := mockFilter(t, config)
++
++		// The syscalls are in increasing order of newness, so all syscalls
++		// after the last allowed syscall will give -ENOSYS.
++		enosysStart := test.end
++
++		for _, arch := range testArches {
++			type syscallTest struct {
++				syscall  string
++				sysno    libseccomp.ScmpSyscall
++				expected int
++			}
++
++			scmpArch, err := libseccomp.GetArchFromString(arch)
++			if err != nil {
++				t.Fatalf("unknown libseccomp architecture %q: %v", arch, err)
++			}
++
++			nativeArch, err := archToNative(scmpArch)
++			if err != nil {
++				t.Fatalf("unknown audit architecture %q: %v", arch, err)
++			}
++
++			var syscallTests []syscallTest
++
++			// Add explicit syscalls (whether they will return -ENOSYS
++			// depends on the filter rules).
++			for idx, syscall := range explicitSyscalls {
++				expected := int(retFallthrough)
++				if idx >= enosysStart {
++					expected = int(retErrnoEnosys)
++				}
++				sysno, err := libseccomp.GetSyscallFromNameByArch(syscall, scmpArch)
++				if err != nil {
++					t.Fatalf("unknown syscall %q on arch %q: %v", syscall, arch, err)
++				}
++				syscallTests = append(syscallTests, syscallTest{
++					syscall,
++					sysno,
++					expected,
++				})
++			}
++
++			// Add implicit syscalls.
++			for _, syscall := range implicitSyscalls {
++				sysno, err := libseccomp.GetSyscallFromNameByArch(syscall, scmpArch)
++				if err != nil {
++					t.Fatalf("unknown syscall %q on arch %q: %v", syscall, arch, err)
++				}
++				syscallTests = append(syscallTests, syscallTest{
++					sysno:    sysno,
++					syscall:  syscall,
++					expected: int(retFallthrough),
++				})
++			}
++
++			// Add future syscalls.
++			for _, sysno := range futureSyscalls {
++				baseSysno, err := libseccomp.GetSyscallFromNameByArch("copy_file_range", scmpArch)
++				if err != nil {
++					t.Fatalf("unknown syscall 'copy_file_range' on arch %q: %v", arch, err)
++				}
++				sysno += baseSysno
++
++				syscallTests = append(syscallTests, syscallTest{
++					sysno:    sysno,
++					syscall:  fmt.Sprintf("syscall_%#x", sysno),
++					expected: int(retErrnoEnosys),
++				})
++			}
++
++			// Test syscalls in the explicit list.
++			for _, test := range syscallTests {
++				// Override the expected value in the two special cases.
++				if !archSet[arch] || isAllowAction(defaultAction) {
++					test.expected = int(retFallthrough)
++				}
++
++				payload := mockSyscallPayload(t, test.sysno, nativeArch, 0x1337, 0xF00BA5)
++				ret, err := filter.Run(payload)
++				if err != nil {
++					t.Fatalf("error running filter: %v", err)
++				}
++				if ret != test.expected {
++					t.Logf("mock filter for %v %v:", arches, allowedSyscalls)
++					for idx, insn := range program {
++						t.Logf("  [%4.1d] %s", idx, insn)
++					}
++					t.Logf("payload: %#v", payload)
++					t.Errorf("filter %s(%d) %q(%d): got %#x, want %#x", arch, nativeArch, test.syscall, test.sysno, ret, test.expected)
++				}
++			}
++		}
++	}
++}
++
++var testActions = map[string]configs.Action{
++	"allow": configs.Allow,
++	"log":   configs.Log,
++	"errno": configs.Errno,
++	"kill":  configs.Kill,
++}
++
++func TestEnosysStub_SingleArch(t *testing.T) {
++	for _, arch := range testArches {
++		arches := []string{arch}
++		t.Run("arch="+arch, func(t *testing.T) {
++			for name, action := range testActions {
++				t.Run("action="+name, func(t *testing.T) {
++					testEnosysStub(t, action, arches)
++				})
++			}
++		})
++	}
++}
++
++func TestEnosysStub_MultiArch(t *testing.T) {
++	for end := 0; end < len(testArches); end++ {
++		for start := 0; start < end; start++ {
++			arches := testArches[start:end]
++			if len(arches) <= 1 {
++				continue
++			}
++			for _, action := range testActions {
++				testEnosysStub(t, action, arches)
++			}
++		}
++	}
++}
+diff --git a/libcontainer/seccomp/patchbpf/enosys_unsupported.go b/libcontainer/seccomp/patchbpf/enosys_unsupported.go
+new file mode 100644
+index 00000000..3312fd65
+--- /dev/null
++++ b/libcontainer/seccomp/patchbpf/enosys_unsupported.go
+@@ -0,0 +1,18 @@
++// +build !linux !cgo !seccomp
++
++package patchbpf
++
++import (
++	"errors"
++
++	"github.com/opencontainers/runc/libcontainer/configs"
++
++	libseccomp "github.com/seccomp/libseccomp-golang"
++)
++
++func PatchAndLoad(config *configs.Seccomp, filter *libseccomp.ScmpFilter) error {
++	if config != nil {
++		return errors.New("cannot patch and load seccomp filter without runc seccomp support")
++	}
++	return nil
++}
+diff --git a/libcontainer/seccomp/seccomp_linux.go b/libcontainer/seccomp/seccomp_linux.go
+index 0c97da65..b9e651d6 100644
+--- a/libcontainer/seccomp/seccomp_linux.go
++++ b/libcontainer/seccomp/seccomp_linux.go
+@@ -10,6 +10,7 @@ import (
+ 	"syscall"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/seccomp/patchbpf"
+ 	libseccomp "github.com/seccomp/libseccomp-golang"
+ )
+ 
+@@ -52,7 +53,6 @@ func InitSeccomp(config *configs.Seccomp) error {
+ 		if err != nil {
+ 			return err
+ 		}
+-
+ 		if err := filter.AddArch(scmpArch); err != nil {
+ 			return err
+ 		}
+@@ -68,13 +68,11 @@ func InitSeccomp(config *configs.Seccomp) error {
+ 		if call == nil {
+ 			return fmt.Errorf("encountered nil syscall while initializing Seccomp")
+ 		}
+-
+-		if err = matchCall(filter, call); err != nil {
++		if err := matchCall(filter, call); err != nil {
+ 			return err
+ 		}
+ 	}
+-
+-	if err = filter.Load(); err != nil {
++	if err := patchbpf.PatchAndLoad(config, filter); err != nil {
+ 		return fmt.Errorf("error loading seccomp filter into kernel: %s", err)
+ 	}
+ 
+@@ -180,7 +178,7 @@ func matchCall(filter *libseccomp.ScmpFilter, call *configs.Syscall) error {
+ 
+ 	// Unconditional match - just add the rule
+ 	if len(call.Args) == 0 {
+-		if err = filter.AddRule(callNum, callAct); err != nil {
++		if err := filter.AddRule(callNum, callAct); err != nil {
+ 			return err
+ 		}
+ 	} else {
+@@ -196,7 +194,7 @@ func matchCall(filter *libseccomp.ScmpFilter, call *configs.Syscall) error {
+ 			conditions = append(conditions, newCond)
+ 		}
+ 
+-		if err = filter.AddRuleConditional(callNum, callAct, conditions); err != nil {
++		if err := filter.AddRuleConditional(callNum, callAct, conditions); err != nil {
+ 			return err
+ 		}
+ 	}
+diff --git a/libcontainer/utils/utils.go b/libcontainer/utils/utils.go
+index bdd13d49..cd04acee 100644
+--- a/libcontainer/utils/utils.go
++++ b/libcontainer/utils/utils.go
+@@ -2,6 +2,7 @@ package utils
+ 
+ import (
+ 	"crypto/rand"
++	"encoding/binary"
+ 	"encoding/hex"
+ 	"encoding/json"
+ 	"fmt"
+@@ -23,6 +24,20 @@ const (
+ 
+ var ConfigRootfs string
+ 
++// NativeEndian is the native byte order of the host system.
++var NativeEndian binary.ByteOrder
++
++func init() {
++	// Copied from <golang.org/x/net/internal/socket/sys.go>.
++	i := uint32(1)
++	b := (*[4]byte)(unsafe.Pointer(&i))
++	if b[0] == 1 {
++		NativeEndian = binary.LittleEndian
++	} else {
++		NativeEndian = binary.BigEndian
++	}
++}
++
+ // GenerateRandomName returns a new name joined with a prefix.  This size
+ // specified is used to truncate the randomly generated value
+ func GenerateRandomName(prefix string, size int) (string, error) {
+diff --git a/vendor/github.com/seccomp/libseccomp-golang/CHANGELOG b/vendor/github.com/seccomp/libseccomp-golang/CHANGELOG
+new file mode 100644
+index 00000000..a01d9a72
+--- /dev/null
++++ b/vendor/github.com/seccomp/libseccomp-golang/CHANGELOG
+@@ -0,0 +1,17 @@
++libseccomp-golang: Releases
++===============================================================================
++https://github.com/seccomp/libseccomp-golang
++
++* Version 0.9.1 - May 21, 2019
++- Minimum supported version of libseccomp bumped to v2.2.0
++- Use Libseccomp's `seccomp_version` API to retrieve library version
++- Unconditionally set TSync attribute for filters, due to Go's heavily threaded nature
++- Fix CVE-2017-18367 - Multiple syscall arguments were incorrectly combined with logical-OR, instead of logical-AND
++- Fix a failure to build on Debian-based distributions due to CGo code
++- Fix unit test failures on 32-bit architectures
++- Improve several errors to be more verbose about their causes
++- Add support for SCMP_ACT_LOG (with libseccomp versions 2.4.x and higher), permitting syscalls but logging their execution
++- Add support for SCMP_FLTATR_CTL_LOG (with libseccomp versions 2.4.x and higher), logging not-allowed actions when they are denied
++
++* Version 0.9.0 - January 5, 2017
++- Initial tagged release
+diff --git a/vendor/github.com/seccomp/libseccomp-golang/Makefile b/vendor/github.com/seccomp/libseccomp-golang/Makefile
+new file mode 100644
+index 00000000..1ff4cc89
+--- /dev/null
++++ b/vendor/github.com/seccomp/libseccomp-golang/Makefile
+@@ -0,0 +1,26 @@
++# libseccomp-golang
++
++.PHONY: all check check-build check-syntax fix-syntax vet test lint
++
++all: check-build
++
++check: vet test
++
++check-build:
++	go build
++
++check-syntax:
++	gofmt -d .
++
++fix-syntax:
++	gofmt -w .
++
++vet:
++	go vet -v
++
++test:
++	go test -v
++
++lint:
++	@$(if $(shell which golint),true,$(error "install golint and include it in your PATH"))
++	golint -set_exit_status
+diff --git a/vendor/github.com/seccomp/libseccomp-golang/README b/vendor/github.com/seccomp/libseccomp-golang/README
+index 64cab691..66839a46 100644
+--- a/vendor/github.com/seccomp/libseccomp-golang/README
++++ b/vendor/github.com/seccomp/libseccomp-golang/README
+@@ -24,3 +24,28 @@ please note that a Google account is not required to subscribe to the mailing
+ list.
+ 
+ 	-> https://groups.google.com/d/forum/libseccomp
++
++Documentation is also available at:
++
++	-> https://godoc.org/github.com/seccomp/libseccomp-golang
++
++* Installing the package
++
++The libseccomp-golang bindings require at least Go v1.2.1 and GCC v4.8.4;
++earlier versions may yield unpredictable results.  If you meet these
++requirements you can install this package using the command below:
++
++	$ go get github.com/seccomp/libseccomp-golang
++
++* Testing the Library
++
++A number of tests and lint related recipes are provided in the Makefile, if
++you want to run the standard regression tests, you can excute the following:
++
++	$ make check
++
++In order to execute the 'make lint' recipe the 'golint' tool is needed, it
++can be found at:
++
++	-> https://github.com/golang/lint
++
+diff --git a/vendor/github.com/seccomp/libseccomp-golang/SUBMITTING_PATCHES b/vendor/github.com/seccomp/libseccomp-golang/SUBMITTING_PATCHES
+new file mode 100644
+index 00000000..744e5cd6
+--- /dev/null
++++ b/vendor/github.com/seccomp/libseccomp-golang/SUBMITTING_PATCHES
+@@ -0,0 +1,112 @@
++How to Submit Patches to the libseccomp Project
++===============================================================================
++https://github.com/seccomp/libseccomp-golang
++
++This document is intended to act as a guide to help you contribute to the
++libseccomp project.  It is not perfect, and there will always be exceptions
++to the rules described here, but by following the instructions below you
++should have a much easier time getting your work merged with the upstream
++project.
++
++* Test Your Code
++
++There are two possible tests you can run to verify your code.  The first test
++is used to check the formatting and coding style of your changes, you can run
++the test with the following command:
++
++	# make check-syntax
++
++... if there are any problems with your changes a diff/patch will be shown
++which indicates the problems and how to fix them.
++
++The second possible test is used to ensure the sanity of your code changes
++and to test these changes against the included tests.  You can run the test
++with the following command:
++
++	# make check
++
++... if there are any faults or errors they will be displayed.
++
++* Generate the Patch(es)
++
++Depending on how you decided to work with the libseccomp code base and what
++tools you are using there are different ways to generate your patch(es).
++However, regardless of what tools you use, you should always generate your
++patches using the "unified" diff/patch format and the patches should always
++apply to the libseccomp source tree using the following command from the top
++directory of the libseccomp sources:
++
++	# patch -p1 < changes.patch
++
++If you are not using git, stacked git (stgit), or some other tool which can
++generate patch files for you automatically, you may find the following command
++helpful in generating patches, where "libseccomp.orig/" is the unmodified
++source code directory and "libseccomp/" is the source code directory with your
++changes:
++
++	# diff -purN libseccomp-golang.orig/ libseccomp-golang/
++
++When in doubt please generate your patch and try applying it to an unmodified
++copy of the libseccomp sources; if it fails for you, it will fail for the rest
++of us.
++
++* Explain Your Work
++
++At the top of every patch you should include a description of the problem you
++are trying to solve, how you solved it, and why you chose the solution you
++implemented.  If you are submitting a bug fix, it is also incredibly helpful
++if you can describe/include a reproducer for the problem in the description as
++well as instructions on how to test for the bug and verify that it has been
++fixed.
++
++* Sign Your Work
++
++The sign-off is a simple line at the end of the patch description, which
++certifies that you wrote it or otherwise have the right to pass it on as an
++open-source patch.  The "Developer's Certificate of Origin" pledge is taken
++from the Linux Kernel and the rules are pretty simple:
++
++	Developer's Certificate of Origin 1.1
++
++	By making a contribution to this project, I certify that:
++
++	(a) The contribution was created in whole or in part by me and I
++	    have the right to submit it under the open source license
++	    indicated in the file; or
++
++	(b) The contribution is based upon previous work that, to the best
++	    of my knowledge, is covered under an appropriate open source
++	    license and I have the right under that license to submit that
++	    work with modifications, whether created in whole or in part
++	    by me, under the same open source license (unless I am
++	    permitted to submit under a different license), as indicated
++	    in the file; or
++
++	(c) The contribution was provided directly to me by some other
++	    person who certified (a), (b) or (c) and I have not modified
++	    it.
++
++	(d) I understand and agree that this project and the contribution
++	    are public and that a record of the contribution (including all
++	    personal information I submit with it, including my sign-off) is
++	    maintained indefinitely and may be redistributed consistent with
++	    this project or the open source license(s) involved.
++
++... then you just add a line to the bottom of your patch description, with
++your real name, saying:
++
++	Signed-off-by: Random J Developer <random@developer.example.org>
++
++* Email Your Patch(es)
++
++Finally, you will need to email your patches to the mailing list so they can
++be reviewed and potentially merged into the main libseccomp-golang repository.
++When sending patches to the mailing list it is important to send your email in
++text form, no HTML mail please, and ensure that your email client does not
++mangle your patches.  It should be possible to save your raw email to disk and
++apply it directly to the libseccomp source code; if that fails then you likely
++have a problem with your email client.  When in doubt try a test first by
++sending yourself an email with your patch and attempting to apply the emailed
++patch to the libseccomp-golang repository; if it fails for you, it will fail
++for the rest of us trying to test your patch and include it in the main
++libseccomp-golang repository.
+diff --git a/vendor/github.com/seccomp/libseccomp-golang/seccomp.go b/vendor/github.com/seccomp/libseccomp-golang/seccomp.go
+index b2c010fc..a3cc5382 100644
+--- a/vendor/github.com/seccomp/libseccomp-golang/seccomp.go
++++ b/vendor/github.com/seccomp/libseccomp-golang/seccomp.go
+@@ -27,6 +27,28 @@ import "C"
+ 
+ // Exported types
+ 
++// VersionError denotes that the system libseccomp version is incompatible
++// with this package.
++type VersionError struct {
++	message string
++	minimum string
++}
++
++func (e VersionError) Error() string {
++	format := "Libseccomp version too low: "
++	if e.message != "" {
++		format += e.message + ": "
++	}
++	format += "minimum supported is "
++	if e.minimum != "" {
++		format += e.minimum + ": "
++	} else {
++		format += "2.2.0: "
++	}
++	format += "detected %d.%d.%d"
++	return fmt.Sprintf(format, verMajor, verMinor, verMicro)
++}
++
+ // ScmpArch represents a CPU architecture. Seccomp can restrict syscalls on a
+ // per-architecture basis.
+ type ScmpArch uint
+@@ -54,8 +76,8 @@ type ScmpSyscall int32
+ 
+ const (
+ 	// Valid architectures recognized by libseccomp
+-	// ARM64 and all MIPS architectures are unsupported by versions of the
+-	// library before v2.2 and will return errors if used
++	// PowerPC and S390(x) architectures are unavailable below library version
++	// v2.3.0 and will returns errors if used with incompatible libraries
+ 
+ 	// ArchInvalid is a placeholder to ensure uninitialized ScmpArch
+ 	// variables are invalid
+@@ -115,6 +137,10 @@ const (
+ 	ActTrace ScmpAction = iota
+ 	// ActAllow permits the syscall to continue execution
+ 	ActAllow ScmpAction = iota
++	// ActLog permits the syscall to continue execution after logging it.
++	// This action is only usable when libseccomp API level 3 or higher is
++	// supported.
++	ActLog ScmpAction = iota
+ )
+ 
+ const (
+@@ -151,6 +177,10 @@ const (
+ // GetArchFromString returns an ScmpArch constant from a string representing an
+ // architecture
+ func GetArchFromString(arch string) (ScmpArch, error) {
++	if err := ensureSupportedVersion(); err != nil {
++		return ArchInvalid, err
++	}
++
+ 	switch strings.ToLower(arch) {
+ 	case "x86":
+ 		return ArchX86, nil
+@@ -185,7 +215,7 @@ func GetArchFromString(arch string) (ScmpArch, error) {
+ 	case "s390x":
+ 		return ArchS390X, nil
+ 	default:
+-		return ArchInvalid, fmt.Errorf("cannot convert unrecognized string %s", arch)
++		return ArchInvalid, fmt.Errorf("cannot convert unrecognized string %q", arch)
+ 	}
+ }
+ 
+@@ -229,7 +259,7 @@ func (a ScmpArch) String() string {
+ 	case ArchInvalid:
+ 		return "Invalid architecture"
+ 	default:
+-		return "Unknown architecture"
++		return fmt.Sprintf("Unknown architecture %#x", uint(a))
+ 	}
+ }
+ 
+@@ -253,7 +283,7 @@ func (a ScmpCompareOp) String() string {
+ 	case CompareInvalid:
+ 		return "Invalid comparison operator"
+ 	default:
+-		return "Unrecognized comparison operator"
++		return fmt.Sprintf("Unrecognized comparison operator %#x", uint(a))
+ 	}
+ }
+ 
+@@ -269,10 +299,12 @@ func (a ScmpAction) String() string {
+ 	case ActTrace:
+ 		return fmt.Sprintf("Action: Notify tracing processes with code %d",
+ 			(a >> 16))
++	case ActLog:
++		return "Action: Log system call"
+ 	case ActAllow:
+ 		return "Action: Allow system call"
+ 	default:
+-		return "Unrecognized Action"
++		return fmt.Sprintf("Unrecognized Action %#x", uint(a))
+ 	}
+ }
+ 
+@@ -298,10 +330,29 @@ func (a ScmpAction) GetReturnCode() int16 {
+ // GetLibraryVersion returns the version of the library the bindings are built
+ // against.
+ // The version is formatted as follows: Major.Minor.Micro
+-func GetLibraryVersion() (major, minor, micro int) {
++func GetLibraryVersion() (major, minor, micro uint) {
+ 	return verMajor, verMinor, verMicro
+ }
+ 
++// GetApi returns the API level supported by the system.
++// Returns a positive int containing the API level, or 0 with an error if the
++// API level could not be detected due to the library being older than v2.4.0.
++// See the seccomp_api_get(3) man page for details on available API levels:
++// https://github.com/seccomp/libseccomp/blob/master/doc/man/man3/seccomp_api_get.3
++func GetApi() (uint, error) {
++	return getApi()
++}
++
++// SetApi forcibly sets the API level. General use of this function is strongly
++// discouraged.
++// Returns an error if the API level could not be set. An error is always
++// returned if the library is older than v2.4.0
++// See the seccomp_api_get(3) man page for details on available API levels:
++// https://github.com/seccomp/libseccomp/blob/master/doc/man/man3/seccomp_api_get.3
++func SetApi(api uint) error {
++	return setApi(api)
++}
++
+ // Syscall functions
+ 
+ // GetName retrieves the name of a syscall from its number.
+@@ -324,7 +375,7 @@ func (s ScmpSyscall) GetNameByArch(arch ScmpArch) (string, error) {
+ 
+ 	cString := C.seccomp_syscall_resolve_num_arch(arch.toNative(), C.int(s))
+ 	if cString == nil {
+-		return "", fmt.Errorf("could not resolve syscall name")
++		return "", fmt.Errorf("could not resolve syscall name for %#x", int32(s))
+ 	}
+ 	defer C.free(unsafe.Pointer(cString))
+ 
+@@ -338,12 +389,16 @@ func (s ScmpSyscall) GetNameByArch(arch ScmpArch) (string, error) {
+ // Returns the number of the syscall, or an error if no syscall with that name
+ // was found.
+ func GetSyscallFromName(name string) (ScmpSyscall, error) {
++	if err := ensureSupportedVersion(); err != nil {
++		return 0, err
++	}
++
+ 	cString := C.CString(name)
+ 	defer C.free(unsafe.Pointer(cString))
+ 
+ 	result := C.seccomp_syscall_resolve_name(cString)
+ 	if result == scmpError {
+-		return 0, fmt.Errorf("could not resolve name to syscall")
++		return 0, fmt.Errorf("could not resolve name to syscall: %q", name)
+ 	}
+ 
+ 	return ScmpSyscall(result), nil
+@@ -355,6 +410,9 @@ func GetSyscallFromName(name string) (ScmpSyscall, error) {
+ // Returns the number of the syscall, or an error if an invalid architecture is
+ // passed or a syscall with that name was not found.
+ func GetSyscallFromNameByArch(name string, arch ScmpArch) (ScmpSyscall, error) {
++	if err := ensureSupportedVersion(); err != nil {
++		return 0, err
++	}
+ 	if err := sanitizeArch(arch); err != nil {
+ 		return 0, err
+ 	}
+@@ -364,7 +422,7 @@ func GetSyscallFromNameByArch(name string, arch ScmpArch) (ScmpSyscall, error) {
+ 
+ 	result := C.seccomp_syscall_resolve_name_arch(arch.toNative(), cString)
+ 	if result == scmpError {
+-		return 0, fmt.Errorf("could not resolve name to syscall")
++		return 0, fmt.Errorf("could not resolve name to syscall: %q on %v", name, arch)
+ 	}
+ 
+ 	return ScmpSyscall(result), nil
+@@ -386,12 +444,16 @@ func GetSyscallFromNameByArch(name string, arch ScmpArch) (ScmpSyscall, error) {
+ func MakeCondition(arg uint, comparison ScmpCompareOp, values ...uint64) (ScmpCondition, error) {
+ 	var condStruct ScmpCondition
+ 
++	if err := ensureSupportedVersion(); err != nil {
++		return condStruct, err
++	}
++
+ 	if comparison == CompareInvalid {
+ 		return condStruct, fmt.Errorf("invalid comparison operator")
+ 	} else if arg > 5 {
+-		return condStruct, fmt.Errorf("syscalls only have up to 6 arguments")
++		return condStruct, fmt.Errorf("syscalls only have up to 6 arguments (%d given)", arg)
+ 	} else if len(values) > 2 {
+-		return condStruct, fmt.Errorf("conditions can have at most 2 arguments")
++		return condStruct, fmt.Errorf("conditions can have at most 2 arguments (%d given)", len(values))
+ 	} else if len(values) == 0 {
+ 		return condStruct, fmt.Errorf("must provide at least one value to compare against")
+ 	}
+@@ -413,6 +475,10 @@ func MakeCondition(arg uint, comparison ScmpCompareOp, values ...uint64) (ScmpCo
+ // GetNativeArch returns architecture token representing the native kernel
+ // architecture
+ func GetNativeArch() (ScmpArch, error) {
++	if err := ensureSupportedVersion(); err != nil {
++		return ArchInvalid, err
++	}
++
+ 	arch := C.seccomp_arch_native()
+ 
+ 	return archFromNative(arch)
+@@ -435,6 +501,10 @@ type ScmpFilter struct {
+ // Returns a reference to a valid filter context, or nil and an error if the
+ // filter context could not be created or an invalid default action was given.
+ func NewFilter(defaultAction ScmpAction) (*ScmpFilter, error) {
++	if err := ensureSupportedVersion(); err != nil {
++		return nil, err
++	}
++
+ 	if err := sanitizeAction(defaultAction); err != nil {
+ 		return nil, err
+ 	}
+@@ -449,6 +519,13 @@ func NewFilter(defaultAction ScmpAction) (*ScmpFilter, error) {
+ 	filter.valid = true
+ 	runtime.SetFinalizer(filter, filterFinalizer)
+ 
++	// Enable TSync so all goroutines will receive the same rules
++	// If the kernel does not support TSYNC, allow us to continue without error
++	if err := filter.setFilterAttr(filterAttrTsync, 0x1); err != nil && err != syscall.ENOTSUP {
++		filter.Release()
++		return nil, fmt.Errorf("could not create filter - error setting tsync bit: %v", err)
++	}
++
+ 	return filter, nil
+ }
+ 
+@@ -505,7 +582,7 @@ func (f *ScmpFilter) Release() {
+ // The source filter src will be released as part of the process, and will no
+ // longer be usable or valid after this call.
+ // To be merged, filters must NOT share any architectures, and all their
+-// attributes (Default Action, Bad Arch Action, No New Privs and TSync bools)
++// attributes (Default Action, Bad Arch Action, and No New Privs bools)
+ // must match.
+ // The filter src will be merged into the filter this is called on.
+ // The architectures of the src filter not present in the destination, and all
+@@ -678,24 +755,24 @@ func (f *ScmpFilter) GetNoNewPrivsBit() (bool, error) {
+ 	return true, nil
+ }
+ 
+-// GetTsyncBit returns whether Thread Synchronization will be enabled on the
+-// filter being loaded, or an error if an issue was encountered retrieving the
+-// value.
+-// Thread Sync ensures that all members of the thread group of the calling
+-// process will share the same Seccomp filter set.
+-// Tsync is a fairly recent addition to the Linux kernel and older kernels
+-// lack support. If the running kernel does not support Tsync and it is
+-// requested in a filter, Libseccomp will not enable TSync support and will
+-// proceed as normal.
+-// This function is unavailable before v2.2 of libseccomp and will return an
+-// error.
+-func (f *ScmpFilter) GetTsyncBit() (bool, error) {
+-	tSync, err := f.getFilterAttr(filterAttrTsync)
++// GetLogBit returns the current state the Log bit will be set to on the filter
++// being loaded, or an error if an issue was encountered retrieving the value.
++// The Log bit tells the kernel that all actions taken by the filter, with the
++// exception of ActAllow, should be logged.
++// The Log bit is only usable when libseccomp API level 3 or higher is
++// supported.
++func (f *ScmpFilter) GetLogBit() (bool, error) {
++	log, err := f.getFilterAttr(filterAttrLog)
+ 	if err != nil {
++		api, apiErr := getApi()
++		if (apiErr != nil && api == 0) || (apiErr == nil && api < 3) {
++			return false, fmt.Errorf("getting the log bit is only supported in libseccomp 2.4.0 and newer with API level 3 or higher")
++		}
++
+ 		return false, err
+ 	}
+ 
+-	if tSync == 0 {
++	if log == 0 {
+ 		return false, nil
+ 	}
+ 
+@@ -728,25 +805,26 @@ func (f *ScmpFilter) SetNoNewPrivsBit(state bool) error {
+ 	return f.setFilterAttr(filterAttrNNP, toSet)
+ }
+ 
+-// SetTsync sets whether Thread Synchronization will be enabled on the filter
+-// being loaded. Returns an error if setting Tsync failed, or the filter is
+-// invalid.
+-// Thread Sync ensures that all members of the thread group of the calling
+-// process will share the same Seccomp filter set.
+-// Tsync is a fairly recent addition to the Linux kernel and older kernels
+-// lack support. If the running kernel does not support Tsync and it is
+-// requested in a filter, Libseccomp will not enable TSync support and will
+-// proceed as normal.
+-// This function is unavailable before v2.2 of libseccomp and will return an
+-// error.
+-func (f *ScmpFilter) SetTsync(enable bool) error {
++// SetLogBit sets the state of the Log bit, which will be applied on filter
++// load, or an error if an issue was encountered setting the value.
++// The Log bit is only usable when libseccomp API level 3 or higher is
++// supported.
++func (f *ScmpFilter) SetLogBit(state bool) error {
+ 	var toSet C.uint32_t = 0x0
+ 
+-	if enable {
++	if state {
+ 		toSet = 0x1
+ 	}
+ 
+-	return f.setFilterAttr(filterAttrTsync, toSet)
++	err := f.setFilterAttr(filterAttrLog, toSet)
++	if err != nil {
++		api, apiErr := getApi()
++		if (apiErr != nil && api == 0) || (apiErr == nil && api < 3) {
++			return fmt.Errorf("setting the log bit is only supported in libseccomp 2.4.0 and newer with API level 3 or higher")
++		}
++	}
++
++	return err
+ }
+ 
+ // SetSyscallPriority sets a syscall's priority.
+diff --git a/vendor/github.com/seccomp/libseccomp-golang/seccomp_internal.go b/vendor/github.com/seccomp/libseccomp-golang/seccomp_internal.go
+index ab67a3de..4e36b27a 100644
+--- a/vendor/github.com/seccomp/libseccomp-golang/seccomp_internal.go
++++ b/vendor/github.com/seccomp/libseccomp-golang/seccomp_internal.go
+@@ -7,7 +7,6 @@ package seccomp
+ 
+ import (
+ 	"fmt"
+-	"os"
+ 	"syscall"
+ )
+ 
+@@ -17,47 +16,20 @@ import (
+ 
+ // #cgo pkg-config: libseccomp
+ /*
++#include <errno.h>
+ #include <stdlib.h>
+ #include <seccomp.h>
+ 
+ #if SCMP_VER_MAJOR < 2
+-#error Minimum supported version of Libseccomp is v2.1.0
+-#elif SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR < 1
+-#error Minimum supported version of Libseccomp is v2.1.0
++#error Minimum supported version of Libseccomp is v2.2.0
++#elif SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR < 2
++#error Minimum supported version of Libseccomp is v2.2.0
+ #endif
+ 
+ #define ARCH_BAD ~0
+ 
+ const uint32_t C_ARCH_BAD = ARCH_BAD;
+ 
+-#ifndef SCMP_ARCH_AARCH64
+-#define SCMP_ARCH_AARCH64 ARCH_BAD
+-#endif
+-
+-#ifndef SCMP_ARCH_MIPS
+-#define SCMP_ARCH_MIPS ARCH_BAD
+-#endif
+-
+-#ifndef SCMP_ARCH_MIPS64
+-#define SCMP_ARCH_MIPS64 ARCH_BAD
+-#endif
+-
+-#ifndef SCMP_ARCH_MIPS64N32
+-#define SCMP_ARCH_MIPS64N32 ARCH_BAD
+-#endif
+-
+-#ifndef SCMP_ARCH_MIPSEL
+-#define SCMP_ARCH_MIPSEL ARCH_BAD
+-#endif
+-
+-#ifndef SCMP_ARCH_MIPSEL64
+-#define SCMP_ARCH_MIPSEL64 ARCH_BAD
+-#endif
+-
+-#ifndef SCMP_ARCH_MIPSEL64N32
+-#define SCMP_ARCH_MIPSEL64N32 ARCH_BAD
+-#endif
+-
+ #ifndef SCMP_ARCH_PPC
+ #define SCMP_ARCH_PPC ARCH_BAD
+ #endif
+@@ -96,22 +68,29 @@ const uint32_t C_ARCH_PPC64LE      = SCMP_ARCH_PPC64LE;
+ const uint32_t C_ARCH_S390         = SCMP_ARCH_S390;
+ const uint32_t C_ARCH_S390X        = SCMP_ARCH_S390X;
+ 
++#ifndef SCMP_ACT_LOG
++#define SCMP_ACT_LOG 0x7ffc0000U
++#endif
++
+ const uint32_t C_ACT_KILL          = SCMP_ACT_KILL;
+ const uint32_t C_ACT_TRAP          = SCMP_ACT_TRAP;
+ const uint32_t C_ACT_ERRNO         = SCMP_ACT_ERRNO(0);
+ const uint32_t C_ACT_TRACE         = SCMP_ACT_TRACE(0);
++const uint32_t C_ACT_LOG           = SCMP_ACT_LOG;
+ const uint32_t C_ACT_ALLOW         = SCMP_ACT_ALLOW;
+ 
+-// If TSync is not supported, make sure it doesn't map to a supported filter attribute
+-// Don't worry about major version < 2, the minimum version checks should catch that case
+-#if SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR < 2
+-#define SCMP_FLTATR_CTL_TSYNC _SCMP_CMP_MIN
++// The libseccomp SCMP_FLTATR_CTL_LOG member of the scmp_filter_attr enum was
++// added in v2.4.0
++#if (SCMP_VER_MAJOR < 2) || \
++    (SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR < 4)
++#define SCMP_FLTATR_CTL_LOG _SCMP_FLTATR_MIN
+ #endif
+ 
+ const uint32_t C_ATTRIBUTE_DEFAULT = (uint32_t)SCMP_FLTATR_ACT_DEFAULT;
+ const uint32_t C_ATTRIBUTE_BADARCH = (uint32_t)SCMP_FLTATR_ACT_BADARCH;
+ const uint32_t C_ATTRIBUTE_NNP     = (uint32_t)SCMP_FLTATR_CTL_NNP;
+ const uint32_t C_ATTRIBUTE_TSYNC   = (uint32_t)SCMP_FLTATR_CTL_TSYNC;
++const uint32_t C_ATTRIBUTE_LOG     = (uint32_t)SCMP_FLTATR_CTL_LOG;
+ 
+ const int      C_CMP_NE            = (int)SCMP_CMP_NE;
+ const int      C_CMP_LT            = (int)SCMP_CMP_LT;
+@@ -125,25 +104,80 @@ const int      C_VERSION_MAJOR     = SCMP_VER_MAJOR;
+ const int      C_VERSION_MINOR     = SCMP_VER_MINOR;
+ const int      C_VERSION_MICRO     = SCMP_VER_MICRO;
+ 
++#if SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR >= 3
++unsigned int get_major_version()
++{
++        return seccomp_version()->major;
++}
++
++unsigned int get_minor_version()
++{
++        return seccomp_version()->minor;
++}
++
++unsigned int get_micro_version()
++{
++        return seccomp_version()->micro;
++}
++#else
++unsigned int get_major_version()
++{
++        return (unsigned int)C_VERSION_MAJOR;
++}
++
++unsigned int get_minor_version()
++{
++        return (unsigned int)C_VERSION_MINOR;
++}
++
++unsigned int get_micro_version()
++{
++        return (unsigned int)C_VERSION_MICRO;
++}
++#endif
++
++// The libseccomp API level functions were added in v2.4.0
++#if (SCMP_VER_MAJOR < 2) || \
++    (SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR < 4)
++const unsigned int seccomp_api_get(void)
++{
++	// libseccomp-golang requires libseccomp v2.2.0, at a minimum, which
++	// supported API level 2. However, the kernel may not support API level
++	// 2 constructs which are the seccomp() system call and the TSYNC
++	// filter flag. Return the "reserved" value of 0 here to indicate that
++	// proper API level support is not available in libseccomp.
++	return 0;
++}
++
++int seccomp_api_set(unsigned int level)
++{
++	return -EOPNOTSUPP;
++}
++#endif
++
+ typedef struct scmp_arg_cmp* scmp_cast_t;
+ 
+-// Wrapper to create an scmp_arg_cmp struct
+-void*
+-make_struct_arg_cmp(
+-                    unsigned int arg,
+-                    int compare,
+-                    uint64_t a,
+-                    uint64_t b
+-                   )
++void* make_arg_cmp_array(unsigned int length)
+ {
+-	struct scmp_arg_cmp *s = malloc(sizeof(struct scmp_arg_cmp));
++        return calloc(length, sizeof(struct scmp_arg_cmp));
++}
+ 
+-	s->arg = arg;
+-	s->op = compare;
+-	s->datum_a = a;
+-	s->datum_b = b;
++// Wrapper to add an scmp_arg_cmp struct to an existing arg_cmp array
++void add_struct_arg_cmp(
++                        struct scmp_arg_cmp* arr,
++                        unsigned int pos,
++                        unsigned int arg,
++                        int compare,
++                        uint64_t a,
++                        uint64_t b
++                       )
++{
++        arr[pos].arg = arg;
++        arr[pos].op = compare;
++        arr[pos].datum_a = a;
++        arr[pos].datum_b = b;
+ 
+-	return s;
++        return;
+ }
+ */
+ import "C"
+@@ -158,6 +192,7 @@ const (
+ 	filterAttrActBadArch scmpFilterAttr = iota
+ 	filterAttrNNP        scmpFilterAttr = iota
+ 	filterAttrTsync      scmpFilterAttr = iota
++	filterAttrLog        scmpFilterAttr = iota
+ )
+ 
+ const (
+@@ -168,7 +203,7 @@ const (
+ 	archEnd   ScmpArch = ArchS390X
+ 	// Comparison boundaries to check for action validity
+ 	actionStart ScmpAction = ActKill
+-	actionEnd   ScmpAction = ActAllow
++	actionEnd   ScmpAction = ActLog
+ 	// Comparison boundaries to check for comparison operator validity
+ 	compareOpStart ScmpCompareOp = CompareNotEqual
+ 	compareOpEnd   ScmpCompareOp = CompareMaskedEqual
+@@ -178,26 +213,49 @@ var (
+ 	// Error thrown on bad filter context
+ 	errBadFilter = fmt.Errorf("filter is invalid or uninitialized")
+ 	// Constants representing library major, minor, and micro versions
+-	verMajor = int(C.C_VERSION_MAJOR)
+-	verMinor = int(C.C_VERSION_MINOR)
+-	verMicro = int(C.C_VERSION_MICRO)
++	verMajor = uint(C.get_major_version())
++	verMinor = uint(C.get_minor_version())
++	verMicro = uint(C.get_micro_version())
+ )
+ 
+ // Nonexported functions
+ 
+ // Check if library version is greater than or equal to the given one
+-func checkVersionAbove(major, minor, micro int) bool {
++func checkVersionAbove(major, minor, micro uint) bool {
+ 	return (verMajor > major) ||
+ 		(verMajor == major && verMinor > minor) ||
+ 		(verMajor == major && verMinor == minor && verMicro >= micro)
+ }
+ 
+-// Init function: Verify library version is appropriate
+-func init() {
+-	if !checkVersionAbove(2, 1, 0) {
+-		fmt.Fprintf(os.Stderr, "Libseccomp version too low: minimum supported is 2.1.0, detected %d.%d.%d", C.C_VERSION_MAJOR, C.C_VERSION_MINOR, C.C_VERSION_MICRO)
+-		os.Exit(-1)
++// Ensure that the library is supported, i.e. >= 2.2.0.
++func ensureSupportedVersion() error {
++	if !checkVersionAbove(2, 2, 0) {
++		return VersionError{}
++	}
++	return nil
++}
++
++// Get the API level
++func getApi() (uint, error) {
++	api := C.seccomp_api_get()
++	if api == 0 {
++		return 0, fmt.Errorf("API level operations are not supported")
+ 	}
++
++	return uint(api), nil
++}
++
++// Set the API level
++func setApi(api uint) error {
++	if retCode := C.seccomp_api_set(C.uint(api)); retCode != 0 {
++		if syscall.Errno(-1*retCode) == syscall.EOPNOTSUPP {
++			return fmt.Errorf("API level operations are not supported")
++		}
++
++		return fmt.Errorf("could not set API level: %v", retCode)
++	}
++
++	return nil
+ }
+ 
+ // Filter helpers
+@@ -216,10 +274,6 @@ func (f *ScmpFilter) getFilterAttr(attr scmpFilterAttr) (C.uint32_t, error) {
+ 		return 0x0, errBadFilter
+ 	}
+ 
+-	if !checkVersionAbove(2, 2, 0) && attr == filterAttrTsync {
+-		return 0x0, fmt.Errorf("the thread synchronization attribute is not supported in this version of the library")
+-	}
+-
+ 	var attribute C.uint32_t
+ 
+ 	retCode := C.seccomp_attr_get(f.filterCtx, attr.toNative(), &attribute)
+@@ -239,10 +293,6 @@ func (f *ScmpFilter) setFilterAttr(attr scmpFilterAttr, value C.uint32_t) error
+ 		return errBadFilter
+ 	}
+ 
+-	if !checkVersionAbove(2, 2, 0) && attr == filterAttrTsync {
+-		return fmt.Errorf("the thread synchronization attribute is not supported in this version of the library")
+-	}
+-
+ 	retCode := C.seccomp_attr_set(f.filterCtx, attr.toNative(), value)
+ 	if retCode != 0 {
+ 		return syscall.Errno(-1 * retCode)
+@@ -254,12 +304,9 @@ func (f *ScmpFilter) setFilterAttr(attr scmpFilterAttr, value C.uint32_t) error
+ // DOES NOT LOCK OR CHECK VALIDITY
+ // Assumes caller has already done this
+ // Wrapper for seccomp_rule_add_... functions
+-func (f *ScmpFilter) addRuleWrapper(call ScmpSyscall, action ScmpAction, exact bool, cond C.scmp_cast_t) error {
+-	var length C.uint
+-	if cond != nil {
+-		length = 1
+-	} else {
+-		length = 0
++func (f *ScmpFilter) addRuleWrapper(call ScmpSyscall, action ScmpAction, exact bool, length C.uint, cond C.scmp_cast_t) error {
++	if length != 0 && cond == nil {
++		return fmt.Errorf("null conditions list, but length is nonzero")
+ 	}
+ 
+ 	var retCode C.int
+@@ -270,9 +317,11 @@ func (f *ScmpFilter) addRuleWrapper(call ScmpSyscall, action ScmpAction, exact b
+ 	}
+ 
+ 	if syscall.Errno(-1*retCode) == syscall.EFAULT {
+-		return fmt.Errorf("unrecognized syscall")
++		return fmt.Errorf("unrecognized syscall %#x", int32(call))
+ 	} else if syscall.Errno(-1*retCode) == syscall.EPERM {
+ 		return fmt.Errorf("requested action matches default action of filter")
++	} else if syscall.Errno(-1*retCode) == syscall.EINVAL {
++		return fmt.Errorf("two checks on same syscall argument")
+ 	} else if retCode != 0 {
+ 		return syscall.Errno(-1 * retCode)
+ 	}
+@@ -290,22 +339,32 @@ func (f *ScmpFilter) addRuleGeneric(call ScmpSyscall, action ScmpAction, exact b
+ 	}
+ 
+ 	if len(conds) == 0 {
+-		if err := f.addRuleWrapper(call, action, exact, nil); err != nil {
++		if err := f.addRuleWrapper(call, action, exact, 0, nil); err != nil {
+ 			return err
+ 		}
+ 	} else {
+ 		// We don't support conditional filtering in library version v2.1
+ 		if !checkVersionAbove(2, 2, 1) {
+-			return fmt.Errorf("conditional filtering requires libseccomp version >= 2.2.1")
++			return VersionError{
++				message: "conditional filtering is not supported",
++				minimum: "2.2.1",
++			}
++		}
++
++		argsArr := C.make_arg_cmp_array(C.uint(len(conds)))
++		if argsArr == nil {
++			return fmt.Errorf("error allocating memory for conditions")
+ 		}
++		defer C.free(argsArr)
+ 
+-		for _, cond := range conds {
+-			cmpStruct := C.make_struct_arg_cmp(C.uint(cond.Argument), cond.Op.toNative(), C.uint64_t(cond.Operand1), C.uint64_t(cond.Operand2))
+-			defer C.free(cmpStruct)
++		for i, cond := range conds {
++			C.add_struct_arg_cmp(C.scmp_cast_t(argsArr), C.uint(i),
++				C.uint(cond.Argument), cond.Op.toNative(),
++				C.uint64_t(cond.Operand1), C.uint64_t(cond.Operand2))
++		}
+ 
+-			if err := f.addRuleWrapper(call, action, exact, C.scmp_cast_t(cmpStruct)); err != nil {
+-				return err
+-			}
++		if err := f.addRuleWrapper(call, action, exact, C.uint(len(conds)), C.scmp_cast_t(argsArr)); err != nil {
++			return err
+ 		}
+ 	}
+ 
+@@ -317,11 +376,11 @@ func (f *ScmpFilter) addRuleGeneric(call ScmpSyscall, action ScmpAction, exact b
+ // Helper - Sanitize Arch token input
+ func sanitizeArch(in ScmpArch) error {
+ 	if in < archStart || in > archEnd {
+-		return fmt.Errorf("unrecognized architecture")
++		return fmt.Errorf("unrecognized architecture %#x", uint(in))
+ 	}
+ 
+ 	if in.toNative() == C.C_ARCH_BAD {
+-		return fmt.Errorf("architecture is not supported on this version of the library")
++		return fmt.Errorf("architecture %v is not supported on this version of the library", in)
+ 	}
+ 
+ 	return nil
+@@ -330,7 +389,7 @@ func sanitizeArch(in ScmpArch) error {
+ func sanitizeAction(in ScmpAction) error {
+ 	inTmp := in & 0x0000FFFF
+ 	if inTmp < actionStart || inTmp > actionEnd {
+-		return fmt.Errorf("unrecognized action")
++		return fmt.Errorf("unrecognized action %#x", uint(inTmp))
+ 	}
+ 
+ 	if inTmp != ActTrace && inTmp != ActErrno && (in&0xFFFF0000) != 0 {
+@@ -342,7 +401,7 @@ func sanitizeAction(in ScmpAction) error {
+ 
+ func sanitizeCompareOp(in ScmpCompareOp) error {
+ 	if in < compareOpStart || in > compareOpEnd {
+-		return fmt.Errorf("unrecognized comparison operator")
++		return fmt.Errorf("unrecognized comparison operator %#x", uint(in))
+ 	}
+ 
+ 	return nil
+@@ -385,7 +444,7 @@ func archFromNative(a C.uint32_t) (ScmpArch, error) {
+ 	case C.C_ARCH_S390X:
+ 		return ArchS390X, nil
+ 	default:
+-		return 0x0, fmt.Errorf("unrecognized architecture")
++		return 0x0, fmt.Errorf("unrecognized architecture %#x", uint32(a))
+ 	}
+ }
+ 
+@@ -464,10 +523,12 @@ func actionFromNative(a C.uint32_t) (ScmpAction, error) {
+ 		return ActErrno.SetReturnCode(int16(aTmp)), nil
+ 	case C.C_ACT_TRACE:
+ 		return ActTrace.SetReturnCode(int16(aTmp)), nil
++	case C.C_ACT_LOG:
++		return ActLog, nil
+ 	case C.C_ACT_ALLOW:
+ 		return ActAllow, nil
+ 	default:
+-		return 0x0, fmt.Errorf("unrecognized action")
++		return 0x0, fmt.Errorf("unrecognized action %#x", uint32(a))
+ 	}
+ }
+ 
+@@ -482,6 +543,8 @@ func (a ScmpAction) toNative() C.uint32_t {
+ 		return C.C_ACT_ERRNO | (C.uint32_t(a) >> 16)
+ 	case ActTrace:
+ 		return C.C_ACT_TRACE | (C.uint32_t(a) >> 16)
++	case ActLog:
++		return C.C_ACT_LOG
+ 	case ActAllow:
+ 		return C.C_ACT_ALLOW
+ 	default:
+@@ -500,6 +563,8 @@ func (a scmpFilterAttr) toNative() uint32 {
+ 		return uint32(C.C_ATTRIBUTE_NNP)
+ 	case filterAttrTsync:
+ 		return uint32(C.C_ATTRIBUTE_TSYNC)
++	case filterAttrLog:
++		return uint32(C.C_ATTRIBUTE_LOG)
+ 	default:
+ 		return 0x0
+ 	}
+diff --git a/vendor/golang.org/x/net/AUTHORS b/vendor/golang.org/x/net/AUTHORS
+new file mode 100644
+index 00000000..15167cd7
+--- /dev/null
++++ b/vendor/golang.org/x/net/AUTHORS
+@@ -0,0 +1,3 @@
++# This source code refers to The Go Authors for copyright purposes.
++# The master list of authors is in the main Go distribution,
++# visible at http://tip.golang.org/AUTHORS.
+diff --git a/vendor/golang.org/x/net/CONTRIBUTORS b/vendor/golang.org/x/net/CONTRIBUTORS
+new file mode 100644
+index 00000000..1c4577e9
+--- /dev/null
++++ b/vendor/golang.org/x/net/CONTRIBUTORS
+@@ -0,0 +1,3 @@
++# This source code was written by the Go contributors.
++# The master list of contributors is in the main Go distribution,
++# visible at http://tip.golang.org/CONTRIBUTORS.
+diff --git a/vendor/golang.org/x/net/LICENSE b/vendor/golang.org/x/net/LICENSE
+new file mode 100644
+index 00000000..6a66aea5
+--- /dev/null
++++ b/vendor/golang.org/x/net/LICENSE
+@@ -0,0 +1,27 @@
++Copyright (c) 2009 The Go Authors. All rights reserved.
++
++Redistribution and use in source and binary forms, with or without
++modification, are permitted provided that the following conditions are
++met:
++
++   * Redistributions of source code must retain the above copyright
++notice, this list of conditions and the following disclaimer.
++   * Redistributions in binary form must reproduce the above
++copyright notice, this list of conditions and the following disclaimer
++in the documentation and/or other materials provided with the
++distribution.
++   * Neither the name of Google Inc. nor the names of its
++contributors may be used to endorse or promote products derived from
++this software without specific prior written permission.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+diff --git a/vendor/golang.org/x/net/PATENTS b/vendor/golang.org/x/net/PATENTS
+new file mode 100644
+index 00000000..73309904
+--- /dev/null
++++ b/vendor/golang.org/x/net/PATENTS
+@@ -0,0 +1,22 @@
++Additional IP Rights Grant (Patents)
++
++"This implementation" means the copyrightable works distributed by
++Google as part of the Go project.
++
++Google hereby grants to You a perpetual, worldwide, non-exclusive,
++no-charge, royalty-free, irrevocable (except as stated in this section)
++patent license to make, have made, use, offer to sell, sell, import,
++transfer and otherwise run, modify and propagate the contents of this
++implementation of Go, where such license applies only to those patent
++claims, both currently owned or controlled by Google and acquired in
++the future, licensable by Google that are necessarily infringed by this
++implementation of Go.  This grant does not include claims that would be
++infringed only as a consequence of further modification of this
++implementation.  If you or your agent or exclusive licensee institute or
++order or agree to the institution of patent litigation against any
++entity (including a cross-claim or counterclaim in a lawsuit) alleging
++that this implementation of Go or any code incorporated within this
++implementation of Go constitutes direct or contributory patent
++infringement, or inducement of patent infringement, then any patent
++rights granted to you under this License for this implementation of Go
++shall terminate as of the date such litigation is filed.
+diff --git a/vendor/golang.org/x/net/bpf/asm.go b/vendor/golang.org/x/net/bpf/asm.go
+new file mode 100644
+index 00000000..15e21b18
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/asm.go
+@@ -0,0 +1,41 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package bpf
++
++import "fmt"
++
++// Assemble converts insts into raw instructions suitable for loading
++// into a BPF virtual machine.
++//
++// Currently, no optimization is attempted, the assembled program flow
++// is exactly as provided.
++func Assemble(insts []Instruction) ([]RawInstruction, error) {
++	ret := make([]RawInstruction, len(insts))
++	var err error
++	for i, inst := range insts {
++		ret[i], err = inst.Assemble()
++		if err != nil {
++			return nil, fmt.Errorf("assembling instruction %d: %s", i+1, err)
++		}
++	}
++	return ret, nil
++}
++
++// Disassemble attempts to parse raw back into
++// Instructions. Unrecognized RawInstructions are assumed to be an
++// extension not implemented by this package, and are passed through
++// unchanged to the output. The allDecoded value reports whether insts
++// contains no RawInstructions.
++func Disassemble(raw []RawInstruction) (insts []Instruction, allDecoded bool) {
++	insts = make([]Instruction, len(raw))
++	allDecoded = true
++	for i, r := range raw {
++		insts[i] = r.Disassemble()
++		if _, ok := insts[i].(RawInstruction); ok {
++			allDecoded = false
++		}
++	}
++	return insts, allDecoded
++}
+diff --git a/vendor/golang.org/x/net/bpf/constants.go b/vendor/golang.org/x/net/bpf/constants.go
+new file mode 100644
+index 00000000..12f3ee83
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/constants.go
+@@ -0,0 +1,222 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package bpf
++
++// A Register is a register of the BPF virtual machine.
++type Register uint16
++
++const (
++	// RegA is the accumulator register. RegA is always the
++	// destination register of ALU operations.
++	RegA Register = iota
++	// RegX is the indirection register, used by LoadIndirect
++	// operations.
++	RegX
++)
++
++// An ALUOp is an arithmetic or logic operation.
++type ALUOp uint16
++
++// ALU binary operation types.
++const (
++	ALUOpAdd ALUOp = iota << 4
++	ALUOpSub
++	ALUOpMul
++	ALUOpDiv
++	ALUOpOr
++	ALUOpAnd
++	ALUOpShiftLeft
++	ALUOpShiftRight
++	aluOpNeg // Not exported because it's the only unary ALU operation, and gets its own instruction type.
++	ALUOpMod
++	ALUOpXor
++)
++
++// A JumpTest is a comparison operator used in conditional jumps.
++type JumpTest uint16
++
++// Supported operators for conditional jumps.
++// K can be RegX for JumpIfX
++const (
++	// K == A
++	JumpEqual JumpTest = iota
++	// K != A
++	JumpNotEqual
++	// K > A
++	JumpGreaterThan
++	// K < A
++	JumpLessThan
++	// K >= A
++	JumpGreaterOrEqual
++	// K <= A
++	JumpLessOrEqual
++	// K & A != 0
++	JumpBitsSet
++	// K & A == 0
++	JumpBitsNotSet
++)
++
++// An Extension is a function call provided by the kernel that
++// performs advanced operations that are expensive or impossible
++// within the BPF virtual machine.
++//
++// Extensions are only implemented by the Linux kernel.
++//
++// TODO: should we prune this list? Some of these extensions seem
++// either broken or near-impossible to use correctly, whereas other
++// (len, random, ifindex) are quite useful.
++type Extension int
++
++// Extension functions available in the Linux kernel.
++const (
++	// extOffset is the negative maximum number of instructions used
++	// to load instructions by overloading the K argument.
++	extOffset = -0x1000
++	// ExtLen returns the length of the packet.
++	ExtLen Extension = 1
++	// ExtProto returns the packet's L3 protocol type.
++	ExtProto Extension = 0
++	// ExtType returns the packet's type (skb->pkt_type in the kernel)
++	//
++	// TODO: better documentation. How nice an API do we want to
++	// provide for these esoteric extensions?
++	ExtType Extension = 4
++	// ExtPayloadOffset returns the offset of the packet payload, or
++	// the first protocol header that the kernel does not know how to
++	// parse.
++	ExtPayloadOffset Extension = 52
++	// ExtInterfaceIndex returns the index of the interface on which
++	// the packet was received.
++	ExtInterfaceIndex Extension = 8
++	// ExtNetlinkAttr returns the netlink attribute of type X at
++	// offset A.
++	ExtNetlinkAttr Extension = 12
++	// ExtNetlinkAttrNested returns the nested netlink attribute of
++	// type X at offset A.
++	ExtNetlinkAttrNested Extension = 16
++	// ExtMark returns the packet's mark value.
++	ExtMark Extension = 20
++	// ExtQueue returns the packet's assigned hardware queue.
++	ExtQueue Extension = 24
++	// ExtLinkLayerType returns the packet's hardware address type
++	// (e.g. Ethernet, Infiniband).
++	ExtLinkLayerType Extension = 28
++	// ExtRXHash returns the packets receive hash.
++	//
++	// TODO: figure out what this rxhash actually is.
++	ExtRXHash Extension = 32
++	// ExtCPUID returns the ID of the CPU processing the current
++	// packet.
++	ExtCPUID Extension = 36
++	// ExtVLANTag returns the packet's VLAN tag.
++	ExtVLANTag Extension = 44
++	// ExtVLANTagPresent returns non-zero if the packet has a VLAN
++	// tag.
++	//
++	// TODO: I think this might be a lie: it reads bit 0x1000 of the
++	// VLAN header, which changed meaning in recent revisions of the
++	// spec - this extension may now return meaningless information.
++	ExtVLANTagPresent Extension = 48
++	// ExtVLANProto returns 0x8100 if the frame has a VLAN header,
++	// 0x88a8 if the frame has a "Q-in-Q" double VLAN header, or some
++	// other value if no VLAN information is present.
++	ExtVLANProto Extension = 60
++	// ExtRand returns a uniformly random uint32.
++	ExtRand Extension = 56
++)
++
++// The following gives names to various bit patterns used in opcode construction.
++
++const (
++	opMaskCls uint16 = 0x7
++	// opClsLoad masks
++	opMaskLoadDest  = 0x01
++	opMaskLoadWidth = 0x18
++	opMaskLoadMode  = 0xe0
++	// opClsALU & opClsJump
++	opMaskOperand  = 0x08
++	opMaskOperator = 0xf0
++)
++
++const (
++	// +---------------+-----------------+---+---+---+
++	// | AddrMode (3b) | LoadWidth (2b)  | 0 | 0 | 0 |
++	// +---------------+-----------------+---+---+---+
++	opClsLoadA uint16 = iota
++	// +---------------+-----------------+---+---+---+
++	// | AddrMode (3b) | LoadWidth (2b)  | 0 | 0 | 1 |
++	// +---------------+-----------------+---+---+---+
++	opClsLoadX
++	// +---+---+---+---+---+---+---+---+
++	// | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
++	// +---+---+---+---+---+---+---+---+
++	opClsStoreA
++	// +---+---+---+---+---+---+---+---+
++	// | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 |
++	// +---+---+---+---+---+---+---+---+
++	opClsStoreX
++	// +---------------+-----------------+---+---+---+
++	// | Operator (4b) | OperandSrc (1b) | 1 | 0 | 0 |
++	// +---------------+-----------------+---+---+---+
++	opClsALU
++	// +-----------------------------+---+---+---+---+
++	// |      TestOperator (4b)      | 0 | 1 | 0 | 1 |
++	// +-----------------------------+---+---+---+---+
++	opClsJump
++	// +---+-------------------------+---+---+---+---+
++	// | 0 | 0 | 0 |   RetSrc (1b)   | 0 | 1 | 1 | 0 |
++	// +---+-------------------------+---+---+---+---+
++	opClsReturn
++	// +---+-------------------------+---+---+---+---+
++	// | 0 | 0 | 0 |  TXAorTAX (1b)  | 0 | 1 | 1 | 1 |
++	// +---+-------------------------+---+---+---+---+
++	opClsMisc
++)
++
++const (
++	opAddrModeImmediate uint16 = iota << 5
++	opAddrModeAbsolute
++	opAddrModeIndirect
++	opAddrModeScratch
++	opAddrModePacketLen // actually an extension, not an addressing mode.
++	opAddrModeMemShift
++)
++
++const (
++	opLoadWidth4 uint16 = iota << 3
++	opLoadWidth2
++	opLoadWidth1
++)
++
++// Operand for ALU and Jump instructions
++type opOperand uint16
++
++// Supported operand sources.
++const (
++	opOperandConstant opOperand = iota << 3
++	opOperandX
++)
++
++// An jumpOp is a conditional jump condition.
++type jumpOp uint16
++
++// Supported jump conditions.
++const (
++	opJumpAlways jumpOp = iota << 4
++	opJumpEqual
++	opJumpGT
++	opJumpGE
++	opJumpSet
++)
++
++const (
++	opRetSrcConstant uint16 = iota << 4
++	opRetSrcA
++)
++
++const (
++	opMiscTAX = 0x00
++	opMiscTXA = 0x80
++)
+diff --git a/vendor/golang.org/x/net/bpf/doc.go b/vendor/golang.org/x/net/bpf/doc.go
+new file mode 100644
+index 00000000..ae62feb5
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/doc.go
+@@ -0,0 +1,82 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++/*
++
++Package bpf implements marshaling and unmarshaling of programs for the
++Berkeley Packet Filter virtual machine, and provides a Go implementation
++of the virtual machine.
++
++BPF's main use is to specify a packet filter for network taps, so that
++the kernel doesn't have to expensively copy every packet it sees to
++userspace. However, it's been repurposed to other areas where running
++user code in-kernel is needed. For example, Linux's seccomp uses BPF
++to apply security policies to system calls. For simplicity, this
++documentation refers only to packets, but other uses of BPF have their
++own data payloads.
++
++BPF programs run in a restricted virtual machine. It has almost no
++access to kernel functions, and while conditional branches are
++allowed, they can only jump forwards, to guarantee that there are no
++infinite loops.
++
++The virtual machine
++
++The BPF VM is an accumulator machine. Its main register, called
++register A, is an implicit source and destination in all arithmetic
++and logic operations. The machine also has 16 scratch registers for
++temporary storage, and an indirection register (register X) for
++indirect memory access. All registers are 32 bits wide.
++
++Each run of a BPF program is given one packet, which is placed in the
++VM's read-only "main memory". LoadAbsolute and LoadIndirect
++instructions can fetch up to 32 bits at a time into register A for
++examination.
++
++The goal of a BPF program is to produce and return a verdict (uint32),
++which tells the kernel what to do with the packet. In the context of
++packet filtering, the returned value is the number of bytes of the
++packet to forward to userspace, or 0 to ignore the packet. Other
++contexts like seccomp define their own return values.
++
++In order to simplify programs, attempts to read past the end of the
++packet terminate the program execution with a verdict of 0 (ignore
++packet). This means that the vast majority of BPF programs don't need
++to do any explicit bounds checking.
++
++In addition to the bytes of the packet, some BPF programs have access
++to extensions, which are essentially calls to kernel utility
++functions. Currently, the only extensions supported by this package
++are the Linux packet filter extensions.
++
++Examples
++
++This packet filter selects all ARP packets.
++
++	bpf.Assemble([]bpf.Instruction{
++		// Load "EtherType" field from the ethernet header.
++		bpf.LoadAbsolute{Off: 12, Size: 2},
++		// Skip over the next instruction if EtherType is not ARP.
++		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: 0x0806, SkipTrue: 1},
++		// Verdict is "send up to 4k of the packet to userspace."
++		bpf.RetConstant{Val: 4096},
++		// Verdict is "ignore packet."
++		bpf.RetConstant{Val: 0},
++	})
++
++This packet filter captures a random 1% sample of traffic.
++
++	bpf.Assemble([]bpf.Instruction{
++		// Get a 32-bit random number from the Linux kernel.
++		bpf.LoadExtension{Num: bpf.ExtRand},
++		// 1% dice roll?
++		bpf.JumpIf{Cond: bpf.JumpLessThan, Val: 2^32/100, SkipFalse: 1},
++		// Capture.
++		bpf.RetConstant{Val: 4096},
++		// Ignore.
++		bpf.RetConstant{Val: 0},
++	})
++
++*/
++package bpf // import "golang.org/x/net/bpf"
+diff --git a/vendor/golang.org/x/net/bpf/instructions.go b/vendor/golang.org/x/net/bpf/instructions.go
+new file mode 100644
+index 00000000..3cffcaa0
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/instructions.go
+@@ -0,0 +1,726 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package bpf
++
++import "fmt"
++
++// An Instruction is one instruction executed by the BPF virtual
++// machine.
++type Instruction interface {
++	// Assemble assembles the Instruction into a RawInstruction.
++	Assemble() (RawInstruction, error)
++}
++
++// A RawInstruction is a raw BPF virtual machine instruction.
++type RawInstruction struct {
++	// Operation to execute.
++	Op uint16
++	// For conditional jump instructions, the number of instructions
++	// to skip if the condition is true/false.
++	Jt uint8
++	Jf uint8
++	// Constant parameter. The meaning depends on the Op.
++	K uint32
++}
++
++// Assemble implements the Instruction Assemble method.
++func (ri RawInstruction) Assemble() (RawInstruction, error) { return ri, nil }
++
++// Disassemble parses ri into an Instruction and returns it. If ri is
++// not recognized by this package, ri itself is returned.
++func (ri RawInstruction) Disassemble() Instruction {
++	switch ri.Op & opMaskCls {
++	case opClsLoadA, opClsLoadX:
++		reg := Register(ri.Op & opMaskLoadDest)
++		sz := 0
++		switch ri.Op & opMaskLoadWidth {
++		case opLoadWidth4:
++			sz = 4
++		case opLoadWidth2:
++			sz = 2
++		case opLoadWidth1:
++			sz = 1
++		default:
++			return ri
++		}
++		switch ri.Op & opMaskLoadMode {
++		case opAddrModeImmediate:
++			if sz != 4 {
++				return ri
++			}
++			return LoadConstant{Dst: reg, Val: ri.K}
++		case opAddrModeScratch:
++			if sz != 4 || ri.K > 15 {
++				return ri
++			}
++			return LoadScratch{Dst: reg, N: int(ri.K)}
++		case opAddrModeAbsolute:
++			if ri.K > extOffset+0xffffffff {
++				return LoadExtension{Num: Extension(-extOffset + ri.K)}
++			}
++			return LoadAbsolute{Size: sz, Off: ri.K}
++		case opAddrModeIndirect:
++			return LoadIndirect{Size: sz, Off: ri.K}
++		case opAddrModePacketLen:
++			if sz != 4 {
++				return ri
++			}
++			return LoadExtension{Num: ExtLen}
++		case opAddrModeMemShift:
++			return LoadMemShift{Off: ri.K}
++		default:
++			return ri
++		}
++
++	case opClsStoreA:
++		if ri.Op != opClsStoreA || ri.K > 15 {
++			return ri
++		}
++		return StoreScratch{Src: RegA, N: int(ri.K)}
++
++	case opClsStoreX:
++		if ri.Op != opClsStoreX || ri.K > 15 {
++			return ri
++		}
++		return StoreScratch{Src: RegX, N: int(ri.K)}
++
++	case opClsALU:
++		switch op := ALUOp(ri.Op & opMaskOperator); op {
++		case ALUOpAdd, ALUOpSub, ALUOpMul, ALUOpDiv, ALUOpOr, ALUOpAnd, ALUOpShiftLeft, ALUOpShiftRight, ALUOpMod, ALUOpXor:
++			switch operand := opOperand(ri.Op & opMaskOperand); operand {
++			case opOperandX:
++				return ALUOpX{Op: op}
++			case opOperandConstant:
++				return ALUOpConstant{Op: op, Val: ri.K}
++			default:
++				return ri
++			}
++		case aluOpNeg:
++			return NegateA{}
++		default:
++			return ri
++		}
++
++	case opClsJump:
++		switch op := jumpOp(ri.Op & opMaskOperator); op {
++		case opJumpAlways:
++			return Jump{Skip: ri.K}
++		case opJumpEqual, opJumpGT, opJumpGE, opJumpSet:
++			cond, skipTrue, skipFalse := jumpOpToTest(op, ri.Jt, ri.Jf)
++			switch operand := opOperand(ri.Op & opMaskOperand); operand {
++			case opOperandX:
++				return JumpIfX{Cond: cond, SkipTrue: skipTrue, SkipFalse: skipFalse}
++			case opOperandConstant:
++				return JumpIf{Cond: cond, Val: ri.K, SkipTrue: skipTrue, SkipFalse: skipFalse}
++			default:
++				return ri
++			}
++		default:
++			return ri
++		}
++
++	case opClsReturn:
++		switch ri.Op {
++		case opClsReturn | opRetSrcA:
++			return RetA{}
++		case opClsReturn | opRetSrcConstant:
++			return RetConstant{Val: ri.K}
++		default:
++			return ri
++		}
++
++	case opClsMisc:
++		switch ri.Op {
++		case opClsMisc | opMiscTAX:
++			return TAX{}
++		case opClsMisc | opMiscTXA:
++			return TXA{}
++		default:
++			return ri
++		}
++
++	default:
++		panic("unreachable") // switch is exhaustive on the bit pattern
++	}
++}
++
++func jumpOpToTest(op jumpOp, skipTrue uint8, skipFalse uint8) (JumpTest, uint8, uint8) {
++	var test JumpTest
++
++	// Decode "fake" jump conditions that don't appear in machine code
++	// Ensures the Assemble -> Disassemble stage recreates the same instructions
++	// See https://github.com/golang/go/issues/18470
++	if skipTrue == 0 {
++		switch op {
++		case opJumpEqual:
++			test = JumpNotEqual
++		case opJumpGT:
++			test = JumpLessOrEqual
++		case opJumpGE:
++			test = JumpLessThan
++		case opJumpSet:
++			test = JumpBitsNotSet
++		}
++
++		return test, skipFalse, 0
++	}
++
++	switch op {
++	case opJumpEqual:
++		test = JumpEqual
++	case opJumpGT:
++		test = JumpGreaterThan
++	case opJumpGE:
++		test = JumpGreaterOrEqual
++	case opJumpSet:
++		test = JumpBitsSet
++	}
++
++	return test, skipTrue, skipFalse
++}
++
++// LoadConstant loads Val into register Dst.
++type LoadConstant struct {
++	Dst Register
++	Val uint32
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a LoadConstant) Assemble() (RawInstruction, error) {
++	return assembleLoad(a.Dst, 4, opAddrModeImmediate, a.Val)
++}
++
++// String returns the instruction in assembler notation.
++func (a LoadConstant) String() string {
++	switch a.Dst {
++	case RegA:
++		return fmt.Sprintf("ld #%d", a.Val)
++	case RegX:
++		return fmt.Sprintf("ldx #%d", a.Val)
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// LoadScratch loads scratch[N] into register Dst.
++type LoadScratch struct {
++	Dst Register
++	N   int // 0-15
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a LoadScratch) Assemble() (RawInstruction, error) {
++	if a.N < 0 || a.N > 15 {
++		return RawInstruction{}, fmt.Errorf("invalid scratch slot %d", a.N)
++	}
++	return assembleLoad(a.Dst, 4, opAddrModeScratch, uint32(a.N))
++}
++
++// String returns the instruction in assembler notation.
++func (a LoadScratch) String() string {
++	switch a.Dst {
++	case RegA:
++		return fmt.Sprintf("ld M[%d]", a.N)
++	case RegX:
++		return fmt.Sprintf("ldx M[%d]", a.N)
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// LoadAbsolute loads packet[Off:Off+Size] as an integer value into
++// register A.
++type LoadAbsolute struct {
++	Off  uint32
++	Size int // 1, 2 or 4
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a LoadAbsolute) Assemble() (RawInstruction, error) {
++	return assembleLoad(RegA, a.Size, opAddrModeAbsolute, a.Off)
++}
++
++// String returns the instruction in assembler notation.
++func (a LoadAbsolute) String() string {
++	switch a.Size {
++	case 1: // byte
++		return fmt.Sprintf("ldb [%d]", a.Off)
++	case 2: // half word
++		return fmt.Sprintf("ldh [%d]", a.Off)
++	case 4: // word
++		if a.Off > extOffset+0xffffffff {
++			return LoadExtension{Num: Extension(a.Off + 0x1000)}.String()
++		}
++		return fmt.Sprintf("ld [%d]", a.Off)
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// LoadIndirect loads packet[X+Off:X+Off+Size] as an integer value
++// into register A.
++type LoadIndirect struct {
++	Off  uint32
++	Size int // 1, 2 or 4
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a LoadIndirect) Assemble() (RawInstruction, error) {
++	return assembleLoad(RegA, a.Size, opAddrModeIndirect, a.Off)
++}
++
++// String returns the instruction in assembler notation.
++func (a LoadIndirect) String() string {
++	switch a.Size {
++	case 1: // byte
++		return fmt.Sprintf("ldb [x + %d]", a.Off)
++	case 2: // half word
++		return fmt.Sprintf("ldh [x + %d]", a.Off)
++	case 4: // word
++		return fmt.Sprintf("ld [x + %d]", a.Off)
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// LoadMemShift multiplies the first 4 bits of the byte at packet[Off]
++// by 4 and stores the result in register X.
++//
++// This instruction is mainly useful to load into X the length of an
++// IPv4 packet header in a single instruction, rather than have to do
++// the arithmetic on the header's first byte by hand.
++type LoadMemShift struct {
++	Off uint32
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a LoadMemShift) Assemble() (RawInstruction, error) {
++	return assembleLoad(RegX, 1, opAddrModeMemShift, a.Off)
++}
++
++// String returns the instruction in assembler notation.
++func (a LoadMemShift) String() string {
++	return fmt.Sprintf("ldx 4*([%d]&0xf)", a.Off)
++}
++
++// LoadExtension invokes a linux-specific extension and stores the
++// result in register A.
++type LoadExtension struct {
++	Num Extension
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a LoadExtension) Assemble() (RawInstruction, error) {
++	if a.Num == ExtLen {
++		return assembleLoad(RegA, 4, opAddrModePacketLen, 0)
++	}
++	return assembleLoad(RegA, 4, opAddrModeAbsolute, uint32(extOffset+a.Num))
++}
++
++// String returns the instruction in assembler notation.
++func (a LoadExtension) String() string {
++	switch a.Num {
++	case ExtLen:
++		return "ld #len"
++	case ExtProto:
++		return "ld #proto"
++	case ExtType:
++		return "ld #type"
++	case ExtPayloadOffset:
++		return "ld #poff"
++	case ExtInterfaceIndex:
++		return "ld #ifidx"
++	case ExtNetlinkAttr:
++		return "ld #nla"
++	case ExtNetlinkAttrNested:
++		return "ld #nlan"
++	case ExtMark:
++		return "ld #mark"
++	case ExtQueue:
++		return "ld #queue"
++	case ExtLinkLayerType:
++		return "ld #hatype"
++	case ExtRXHash:
++		return "ld #rxhash"
++	case ExtCPUID:
++		return "ld #cpu"
++	case ExtVLANTag:
++		return "ld #vlan_tci"
++	case ExtVLANTagPresent:
++		return "ld #vlan_avail"
++	case ExtVLANProto:
++		return "ld #vlan_tpid"
++	case ExtRand:
++		return "ld #rand"
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// StoreScratch stores register Src into scratch[N].
++type StoreScratch struct {
++	Src Register
++	N   int // 0-15
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a StoreScratch) Assemble() (RawInstruction, error) {
++	if a.N < 0 || a.N > 15 {
++		return RawInstruction{}, fmt.Errorf("invalid scratch slot %d", a.N)
++	}
++	var op uint16
++	switch a.Src {
++	case RegA:
++		op = opClsStoreA
++	case RegX:
++		op = opClsStoreX
++	default:
++		return RawInstruction{}, fmt.Errorf("invalid source register %v", a.Src)
++	}
++
++	return RawInstruction{
++		Op: op,
++		K:  uint32(a.N),
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a StoreScratch) String() string {
++	switch a.Src {
++	case RegA:
++		return fmt.Sprintf("st M[%d]", a.N)
++	case RegX:
++		return fmt.Sprintf("stx M[%d]", a.N)
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// ALUOpConstant executes A = A <Op> Val.
++type ALUOpConstant struct {
++	Op  ALUOp
++	Val uint32
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a ALUOpConstant) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsALU | uint16(opOperandConstant) | uint16(a.Op),
++		K:  a.Val,
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a ALUOpConstant) String() string {
++	switch a.Op {
++	case ALUOpAdd:
++		return fmt.Sprintf("add #%d", a.Val)
++	case ALUOpSub:
++		return fmt.Sprintf("sub #%d", a.Val)
++	case ALUOpMul:
++		return fmt.Sprintf("mul #%d", a.Val)
++	case ALUOpDiv:
++		return fmt.Sprintf("div #%d", a.Val)
++	case ALUOpMod:
++		return fmt.Sprintf("mod #%d", a.Val)
++	case ALUOpAnd:
++		return fmt.Sprintf("and #%d", a.Val)
++	case ALUOpOr:
++		return fmt.Sprintf("or #%d", a.Val)
++	case ALUOpXor:
++		return fmt.Sprintf("xor #%d", a.Val)
++	case ALUOpShiftLeft:
++		return fmt.Sprintf("lsh #%d", a.Val)
++	case ALUOpShiftRight:
++		return fmt.Sprintf("rsh #%d", a.Val)
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// ALUOpX executes A = A <Op> X
++type ALUOpX struct {
++	Op ALUOp
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a ALUOpX) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsALU | uint16(opOperandX) | uint16(a.Op),
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a ALUOpX) String() string {
++	switch a.Op {
++	case ALUOpAdd:
++		return "add x"
++	case ALUOpSub:
++		return "sub x"
++	case ALUOpMul:
++		return "mul x"
++	case ALUOpDiv:
++		return "div x"
++	case ALUOpMod:
++		return "mod x"
++	case ALUOpAnd:
++		return "and x"
++	case ALUOpOr:
++		return "or x"
++	case ALUOpXor:
++		return "xor x"
++	case ALUOpShiftLeft:
++		return "lsh x"
++	case ALUOpShiftRight:
++		return "rsh x"
++	default:
++		return fmt.Sprintf("unknown instruction: %#v", a)
++	}
++}
++
++// NegateA executes A = -A.
++type NegateA struct{}
++
++// Assemble implements the Instruction Assemble method.
++func (a NegateA) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsALU | uint16(aluOpNeg),
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a NegateA) String() string {
++	return fmt.Sprintf("neg")
++}
++
++// Jump skips the following Skip instructions in the program.
++type Jump struct {
++	Skip uint32
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a Jump) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsJump | uint16(opJumpAlways),
++		K:  a.Skip,
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a Jump) String() string {
++	return fmt.Sprintf("ja %d", a.Skip)
++}
++
++// JumpIf skips the following Skip instructions in the program if A
++// <Cond> Val is true.
++type JumpIf struct {
++	Cond      JumpTest
++	Val       uint32
++	SkipTrue  uint8
++	SkipFalse uint8
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a JumpIf) Assemble() (RawInstruction, error) {
++	return jumpToRaw(a.Cond, opOperandConstant, a.Val, a.SkipTrue, a.SkipFalse)
++}
++
++// String returns the instruction in assembler notation.
++func (a JumpIf) String() string {
++	return jumpToString(a.Cond, fmt.Sprintf("#%d", a.Val), a.SkipTrue, a.SkipFalse)
++}
++
++// JumpIfX skips the following Skip instructions in the program if A
++// <Cond> X is true.
++type JumpIfX struct {
++	Cond      JumpTest
++	SkipTrue  uint8
++	SkipFalse uint8
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a JumpIfX) Assemble() (RawInstruction, error) {
++	return jumpToRaw(a.Cond, opOperandX, 0, a.SkipTrue, a.SkipFalse)
++}
++
++// String returns the instruction in assembler notation.
++func (a JumpIfX) String() string {
++	return jumpToString(a.Cond, "x", a.SkipTrue, a.SkipFalse)
++}
++
++// jumpToRaw assembles a jump instruction into a RawInstruction
++func jumpToRaw(test JumpTest, operand opOperand, k uint32, skipTrue, skipFalse uint8) (RawInstruction, error) {
++	var (
++		cond jumpOp
++		flip bool
++	)
++	switch test {
++	case JumpEqual:
++		cond = opJumpEqual
++	case JumpNotEqual:
++		cond, flip = opJumpEqual, true
++	case JumpGreaterThan:
++		cond = opJumpGT
++	case JumpLessThan:
++		cond, flip = opJumpGE, true
++	case JumpGreaterOrEqual:
++		cond = opJumpGE
++	case JumpLessOrEqual:
++		cond, flip = opJumpGT, true
++	case JumpBitsSet:
++		cond = opJumpSet
++	case JumpBitsNotSet:
++		cond, flip = opJumpSet, true
++	default:
++		return RawInstruction{}, fmt.Errorf("unknown JumpTest %v", test)
++	}
++	jt, jf := skipTrue, skipFalse
++	if flip {
++		jt, jf = jf, jt
++	}
++	return RawInstruction{
++		Op: opClsJump | uint16(cond) | uint16(operand),
++		Jt: jt,
++		Jf: jf,
++		K:  k,
++	}, nil
++}
++
++// jumpToString converts a jump instruction to assembler notation
++func jumpToString(cond JumpTest, operand string, skipTrue, skipFalse uint8) string {
++	switch cond {
++	// K == A
++	case JumpEqual:
++		return conditionalJump(operand, skipTrue, skipFalse, "jeq", "jneq")
++	// K != A
++	case JumpNotEqual:
++		return fmt.Sprintf("jneq %s,%d", operand, skipTrue)
++	// K > A
++	case JumpGreaterThan:
++		return conditionalJump(operand, skipTrue, skipFalse, "jgt", "jle")
++	// K < A
++	case JumpLessThan:
++		return fmt.Sprintf("jlt %s,%d", operand, skipTrue)
++	// K >= A
++	case JumpGreaterOrEqual:
++		return conditionalJump(operand, skipTrue, skipFalse, "jge", "jlt")
++	// K <= A
++	case JumpLessOrEqual:
++		return fmt.Sprintf("jle %s,%d", operand, skipTrue)
++	// K & A != 0
++	case JumpBitsSet:
++		if skipFalse > 0 {
++			return fmt.Sprintf("jset %s,%d,%d", operand, skipTrue, skipFalse)
++		}
++		return fmt.Sprintf("jset %s,%d", operand, skipTrue)
++	// K & A == 0, there is no assembler instruction for JumpBitNotSet, use JumpBitSet and invert skips
++	case JumpBitsNotSet:
++		return jumpToString(JumpBitsSet, operand, skipFalse, skipTrue)
++	default:
++		return fmt.Sprintf("unknown JumpTest %#v", cond)
++	}
++}
++
++func conditionalJump(operand string, skipTrue, skipFalse uint8, positiveJump, negativeJump string) string {
++	if skipTrue > 0 {
++		if skipFalse > 0 {
++			return fmt.Sprintf("%s %s,%d,%d", positiveJump, operand, skipTrue, skipFalse)
++		}
++		return fmt.Sprintf("%s %s,%d", positiveJump, operand, skipTrue)
++	}
++	return fmt.Sprintf("%s %s,%d", negativeJump, operand, skipFalse)
++}
++
++// RetA exits the BPF program, returning the value of register A.
++type RetA struct{}
++
++// Assemble implements the Instruction Assemble method.
++func (a RetA) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsReturn | opRetSrcA,
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a RetA) String() string {
++	return fmt.Sprintf("ret a")
++}
++
++// RetConstant exits the BPF program, returning a constant value.
++type RetConstant struct {
++	Val uint32
++}
++
++// Assemble implements the Instruction Assemble method.
++func (a RetConstant) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsReturn | opRetSrcConstant,
++		K:  a.Val,
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a RetConstant) String() string {
++	return fmt.Sprintf("ret #%d", a.Val)
++}
++
++// TXA copies the value of register X to register A.
++type TXA struct{}
++
++// Assemble implements the Instruction Assemble method.
++func (a TXA) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsMisc | opMiscTXA,
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a TXA) String() string {
++	return fmt.Sprintf("txa")
++}
++
++// TAX copies the value of register A to register X.
++type TAX struct{}
++
++// Assemble implements the Instruction Assemble method.
++func (a TAX) Assemble() (RawInstruction, error) {
++	return RawInstruction{
++		Op: opClsMisc | opMiscTAX,
++	}, nil
++}
++
++// String returns the instruction in assembler notation.
++func (a TAX) String() string {
++	return fmt.Sprintf("tax")
++}
++
++func assembleLoad(dst Register, loadSize int, mode uint16, k uint32) (RawInstruction, error) {
++	var (
++		cls uint16
++		sz  uint16
++	)
++	switch dst {
++	case RegA:
++		cls = opClsLoadA
++	case RegX:
++		cls = opClsLoadX
++	default:
++		return RawInstruction{}, fmt.Errorf("invalid target register %v", dst)
++	}
++	switch loadSize {
++	case 1:
++		sz = opLoadWidth1
++	case 2:
++		sz = opLoadWidth2
++	case 4:
++		sz = opLoadWidth4
++	default:
++		return RawInstruction{}, fmt.Errorf("invalid load byte length %d", sz)
++	}
++	return RawInstruction{
++		Op: cls | sz | mode,
++		K:  k,
++	}, nil
++}
+diff --git a/vendor/golang.org/x/net/bpf/setter.go b/vendor/golang.org/x/net/bpf/setter.go
+new file mode 100644
+index 00000000..43e35f0a
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/setter.go
+@@ -0,0 +1,10 @@
++// Copyright 2017 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package bpf
++
++// A Setter is a type which can attach a compiled BPF filter to itself.
++type Setter interface {
++	SetBPF(filter []RawInstruction) error
++}
+diff --git a/vendor/golang.org/x/net/bpf/vm.go b/vendor/golang.org/x/net/bpf/vm.go
+new file mode 100644
+index 00000000..73f57f1f
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/vm.go
+@@ -0,0 +1,150 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package bpf
++
++import (
++	"errors"
++	"fmt"
++)
++
++// A VM is an emulated BPF virtual machine.
++type VM struct {
++	filter []Instruction
++}
++
++// NewVM returns a new VM using the input BPF program.
++func NewVM(filter []Instruction) (*VM, error) {
++	if len(filter) == 0 {
++		return nil, errors.New("one or more Instructions must be specified")
++	}
++
++	for i, ins := range filter {
++		check := len(filter) - (i + 1)
++		switch ins := ins.(type) {
++		// Check for out-of-bounds jumps in instructions
++		case Jump:
++			if check <= int(ins.Skip) {
++				return nil, fmt.Errorf("cannot jump %d instructions; jumping past program bounds", ins.Skip)
++			}
++		case JumpIf:
++			if check <= int(ins.SkipTrue) {
++				return nil, fmt.Errorf("cannot jump %d instructions in true case; jumping past program bounds", ins.SkipTrue)
++			}
++			if check <= int(ins.SkipFalse) {
++				return nil, fmt.Errorf("cannot jump %d instructions in false case; jumping past program bounds", ins.SkipFalse)
++			}
++		case JumpIfX:
++			if check <= int(ins.SkipTrue) {
++				return nil, fmt.Errorf("cannot jump %d instructions in true case; jumping past program bounds", ins.SkipTrue)
++			}
++			if check <= int(ins.SkipFalse) {
++				return nil, fmt.Errorf("cannot jump %d instructions in false case; jumping past program bounds", ins.SkipFalse)
++			}
++		// Check for division or modulus by zero
++		case ALUOpConstant:
++			if ins.Val != 0 {
++				break
++			}
++
++			switch ins.Op {
++			case ALUOpDiv, ALUOpMod:
++				return nil, errors.New("cannot divide by zero using ALUOpConstant")
++			}
++		// Check for unknown extensions
++		case LoadExtension:
++			switch ins.Num {
++			case ExtLen:
++			default:
++				return nil, fmt.Errorf("extension %d not implemented", ins.Num)
++			}
++		}
++	}
++
++	// Make sure last instruction is a return instruction
++	switch filter[len(filter)-1].(type) {
++	case RetA, RetConstant:
++	default:
++		return nil, errors.New("BPF program must end with RetA or RetConstant")
++	}
++
++	// Though our VM works using disassembled instructions, we
++	// attempt to assemble the input filter anyway to ensure it is compatible
++	// with an operating system VM.
++	_, err := Assemble(filter)
++
++	return &VM{
++		filter: filter,
++	}, err
++}
++
++// Run runs the VM's BPF program against the input bytes.
++// Run returns the number of bytes accepted by the BPF program, and any errors
++// which occurred while processing the program.
++func (v *VM) Run(in []byte) (int, error) {
++	var (
++		// Registers of the virtual machine
++		regA       uint32
++		regX       uint32
++		regScratch [16]uint32
++
++		// OK is true if the program should continue processing the next
++		// instruction, or false if not, causing the loop to break
++		ok = true
++	)
++
++	// TODO(mdlayher): implement:
++	// - NegateA:
++	//   - would require a change from uint32 registers to int32
++	//     registers
++
++	// TODO(mdlayher): add interop tests that check signedness of ALU
++	// operations against kernel implementation, and make sure Go
++	// implementation matches behavior
++
++	for i := 0; i < len(v.filter) && ok; i++ {
++		ins := v.filter[i]
++
++		switch ins := ins.(type) {
++		case ALUOpConstant:
++			regA = aluOpConstant(ins, regA)
++		case ALUOpX:
++			regA, ok = aluOpX(ins, regA, regX)
++		case Jump:
++			i += int(ins.Skip)
++		case JumpIf:
++			jump := jumpIf(ins, regA)
++			i += jump
++		case JumpIfX:
++			jump := jumpIfX(ins, regA, regX)
++			i += jump
++		case LoadAbsolute:
++			regA, ok = loadAbsolute(ins, in)
++		case LoadConstant:
++			regA, regX = loadConstant(ins, regA, regX)
++		case LoadExtension:
++			regA = loadExtension(ins, in)
++		case LoadIndirect:
++			regA, ok = loadIndirect(ins, in, regX)
++		case LoadMemShift:
++			regX, ok = loadMemShift(ins, in)
++		case LoadScratch:
++			regA, regX = loadScratch(ins, regScratch, regA, regX)
++		case RetA:
++			return int(regA), nil
++		case RetConstant:
++			return int(ins.Val), nil
++		case StoreScratch:
++			regScratch = storeScratch(ins, regScratch, regA, regX)
++		case TAX:
++			regX = regA
++		case TXA:
++			regA = regX
++		default:
++			return 0, fmt.Errorf("unknown Instruction at index %d: %T", i, ins)
++		}
++	}
++
++	return 0, nil
++}
+diff --git a/vendor/golang.org/x/net/bpf/vm_instructions.go b/vendor/golang.org/x/net/bpf/vm_instructions.go
+new file mode 100644
+index 00000000..cf8947c3
+--- /dev/null
++++ b/vendor/golang.org/x/net/bpf/vm_instructions.go
+@@ -0,0 +1,182 @@
++// Copyright 2016 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package bpf
++
++import (
++	"encoding/binary"
++	"fmt"
++)
++
++func aluOpConstant(ins ALUOpConstant, regA uint32) uint32 {
++	return aluOpCommon(ins.Op, regA, ins.Val)
++}
++
++func aluOpX(ins ALUOpX, regA uint32, regX uint32) (uint32, bool) {
++	// Guard against division or modulus by zero by terminating
++	// the program, as the OS BPF VM does
++	if regX == 0 {
++		switch ins.Op {
++		case ALUOpDiv, ALUOpMod:
++			return 0, false
++		}
++	}
++
++	return aluOpCommon(ins.Op, regA, regX), true
++}
++
++func aluOpCommon(op ALUOp, regA uint32, value uint32) uint32 {
++	switch op {
++	case ALUOpAdd:
++		return regA + value
++	case ALUOpSub:
++		return regA - value
++	case ALUOpMul:
++		return regA * value
++	case ALUOpDiv:
++		// Division by zero not permitted by NewVM and aluOpX checks
++		return regA / value
++	case ALUOpOr:
++		return regA | value
++	case ALUOpAnd:
++		return regA & value
++	case ALUOpShiftLeft:
++		return regA << value
++	case ALUOpShiftRight:
++		return regA >> value
++	case ALUOpMod:
++		// Modulus by zero not permitted by NewVM and aluOpX checks
++		return regA % value
++	case ALUOpXor:
++		return regA ^ value
++	default:
++		return regA
++	}
++}
++
++func jumpIf(ins JumpIf, regA uint32) int {
++	return jumpIfCommon(ins.Cond, ins.SkipTrue, ins.SkipFalse, regA, ins.Val)
++}
++
++func jumpIfX(ins JumpIfX, regA uint32, regX uint32) int {
++	return jumpIfCommon(ins.Cond, ins.SkipTrue, ins.SkipFalse, regA, regX)
++}
++
++func jumpIfCommon(cond JumpTest, skipTrue, skipFalse uint8, regA uint32, value uint32) int {
++	var ok bool
++
++	switch cond {
++	case JumpEqual:
++		ok = regA == value
++	case JumpNotEqual:
++		ok = regA != value
++	case JumpGreaterThan:
++		ok = regA > value
++	case JumpLessThan:
++		ok = regA < value
++	case JumpGreaterOrEqual:
++		ok = regA >= value
++	case JumpLessOrEqual:
++		ok = regA <= value
++	case JumpBitsSet:
++		ok = (regA & value) != 0
++	case JumpBitsNotSet:
++		ok = (regA & value) == 0
++	}
++
++	if ok {
++		return int(skipTrue)
++	}
++
++	return int(skipFalse)
++}
++
++func loadAbsolute(ins LoadAbsolute, in []byte) (uint32, bool) {
++	offset := int(ins.Off)
++	size := int(ins.Size)
++
++	return loadCommon(in, offset, size)
++}
++
++func loadConstant(ins LoadConstant, regA uint32, regX uint32) (uint32, uint32) {
++	switch ins.Dst {
++	case RegA:
++		regA = ins.Val
++	case RegX:
++		regX = ins.Val
++	}
++
++	return regA, regX
++}
++
++func loadExtension(ins LoadExtension, in []byte) uint32 {
++	switch ins.Num {
++	case ExtLen:
++		return uint32(len(in))
++	default:
++		panic(fmt.Sprintf("unimplemented extension: %d", ins.Num))
++	}
++}
++
++func loadIndirect(ins LoadIndirect, in []byte, regX uint32) (uint32, bool) {
++	offset := int(ins.Off) + int(regX)
++	size := int(ins.Size)
++
++	return loadCommon(in, offset, size)
++}
++
++func loadMemShift(ins LoadMemShift, in []byte) (uint32, bool) {
++	offset := int(ins.Off)
++
++	// Size of LoadMemShift is always 1 byte
++	if !inBounds(len(in), offset, 1) {
++		return 0, false
++	}
++
++	// Mask off high 4 bits and multiply low 4 bits by 4
++	return uint32(in[offset]&0x0f) * 4, true
++}
++
++func inBounds(inLen int, offset int, size int) bool {
++	return offset+size <= inLen
++}
++
++func loadCommon(in []byte, offset int, size int) (uint32, bool) {
++	if !inBounds(len(in), offset, size) {
++		return 0, false
++	}
++
++	switch size {
++	case 1:
++		return uint32(in[offset]), true
++	case 2:
++		return uint32(binary.BigEndian.Uint16(in[offset : offset+size])), true
++	case 4:
++		return uint32(binary.BigEndian.Uint32(in[offset : offset+size])), true
++	default:
++		panic(fmt.Sprintf("invalid load size: %d", size))
++	}
++}
++
++func loadScratch(ins LoadScratch, regScratch [16]uint32, regA uint32, regX uint32) (uint32, uint32) {
++	switch ins.Dst {
++	case RegA:
++		regA = regScratch[ins.N]
++	case RegX:
++		regX = regScratch[ins.N]
++	}
++
++	return regA, regX
++}
++
++func storeScratch(ins StoreScratch, regScratch [16]uint32, regA uint32, regX uint32) [16]uint32 {
++	switch ins.Src {
++	case RegA:
++		regScratch[ins.N] = regA
++	case RegX:
++		regScratch[ins.N] = regX
++	}
++
++	return regScratch
++}
+-- 
+2.30.0
+

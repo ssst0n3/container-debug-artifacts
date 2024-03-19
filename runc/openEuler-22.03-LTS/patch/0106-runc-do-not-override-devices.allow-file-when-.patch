@@ -1,0 +1,92 @@
+From 62cc623c6c6f7ae344b3ac3ce2f9fb7b3d16303b Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Mon, 15 Jul 2019 14:47:05 +0800
+Subject: [PATCH] runc:  do not override devices.allow content when set
+ device cgroup
+
+reason:docker update will call runc device cgroup set function which
+will refresh container's devices to devices.allow cgroup file, this
+action will override devices.allow content even through some existed
+devices in container are not added by --device, for example by docker-tools.
+
+Change-Id: Ib353437a1d55de260f7724b3b8e085d08c7a3248
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ libcontainer/cgroups/fs/devices.go | 39 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/libcontainer/cgroups/fs/devices.go b/libcontainer/cgroups/fs/devices.go
+index 0ac5b4e..0ffc2b3 100644
+--- a/libcontainer/cgroups/fs/devices.go
++++ b/libcontainer/cgroups/fs/devices.go
+@@ -3,9 +3,13 @@
+ package fs
+ 
+ import (
++	"bufio"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/system"
++	"io"
++	"os"
++	"path/filepath"
+ )
+ 
+ type DevicesGroup struct {
+@@ -25,11 +29,38 @@ func (s *DevicesGroup) Apply(d *cgroupData) error {
+ 	return nil
+ }
+ 
++func readCgroupDeviceMap(dir string) (map[string]bool, error) {
++	res := make(map[string]bool)
++	fi, err := os.Open(filepath.Join(dir, "devices.list"))
++	if err != nil {
++		return nil, err
++	}
++	defer fi.Close()
++	br := bufio.NewReader(fi)
++	for {
++		item, err := br.ReadString('\n')
++		if err != nil {
++			if err == io.EOF {
++				break
++			} else {
++				return nil, err
++			}
++		}
++		res[item] = true
++	}
++	return res, nil
++}
++
+ func (s *DevicesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 	if system.RunningInUserNS() {
+ 		return nil
+ 	}
+ 
++	deviceMap, err := readCgroupDeviceMap(path)
++	if err != nil {
++		return err
++	}
++
+ 	devices := cgroup.Resources.Devices
+ 	if len(devices) > 0 {
+ 		for _, dev := range devices {
+@@ -40,6 +71,14 @@ func (s *DevicesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 			if err := writeFile(path, file, dev.CgroupString()); err != nil {
+ 				return err
+ 			}
++			delete(deviceMap, dev.CgroupString())
++		}
++		for item, _ := range deviceMap {
++			if item[0] == 'b' || item[0] == 'c' {
++				if err := writeFile(path, "devices.allow", item); err != nil {
++					return err
++				}
++			}
+ 		}
+ 		return nil
+ 	}
+-- 
+1.8.3.1
+

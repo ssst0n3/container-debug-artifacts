@@ -1,0 +1,63 @@
+From 574f88a1801656869b69408cf2eb0f32c6c0e4aa Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Mon, 6 May 2019 02:49:36 +0800
+Subject: [PATCH] runc:  print memory info when syscall.Exec failed
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+reason: print system and cgroup memory info when syscall.Exec failed.
+
+Change-Id: I4aef0ea3da16849ab82adf45db5a828c758b33ea
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/standard_init_linux.go | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index fd836f3..b25669f 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -4,12 +4,14 @@ package libcontainer
+ 
+ import (
+ 	"fmt"
++	"io/ioutil"
+ 	"os"
+ 	"os/exec"
+ 	"strings"
+ 	"syscall"
+ 	"time"
+ 
++	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+@@ -212,7 +214,24 @@ func (l *linuxStandardInit) Init() error {
+ 	// https://github.com/torvalds/linux/blob/v4.9/fs/exec.c#L1290-L1318
+ 	syscall.Close(l.stateDirFD)
+ 	if err := syscall.Exec(name, l.config.Args[0:], os.Environ()); err != nil {
++		printMemoryInfo()
+ 		return newSystemErrorWithCause(err, "exec user process")
+ 	}
+ 	return nil
+ }
++
++func printMemoryInfo() {
++	output, err := ioutil.ReadFile("/proc/meminfo")
++	if err != nil {
++		logrus.Errorf("Failed to read /proc/meminfo, %v", err)
++	} else {
++		logrus.Infof("print memory info (/proc/meminfo): %s", string(output))
++	}
++
++	output, err = ioutil.ReadFile("/sys/fs/cgroup/memory/memory.stat")
++	if err != nil {
++		logrus.Errorf("Failed to read /sys/fs/cgroup/memory/memory.stat, %v", err)
++	} else {
++		logrus.Infof("print memory info (cgroup memory.stat): %s", string(output))
++	}
++}
+-- 
+1.8.3.1
+

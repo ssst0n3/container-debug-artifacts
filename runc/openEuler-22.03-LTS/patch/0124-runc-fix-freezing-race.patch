@@ -1,0 +1,69 @@
+From 943822abaa0aee51985384912292589ae1e34622 Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Thu, 4 Feb 2021 16:26:49 +0800
+Subject: [PATCH] runc: fix freezing race
+
+runc kill blocks in freezer.Set, freezer.state keeps in freezing,
+because new process is creating during freeze.
+
+Upstream:https://github.com/opencontainers/runc/pull/2774
+         https://github.com/opencontainers/runc/pull/2791
+
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/fs/freezer.go | 19 ++++++++++++++-----
+ 1 file changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/freezer.go b/libcontainer/cgroups/fs/freezer.go
+index 5ab3c02..40f70c1 100644
+--- a/libcontainer/cgroups/fs/freezer.go
++++ b/libcontainer/cgroups/fs/freezer.go
+@@ -3,6 +3,7 @@
+ package fs
+ 
+ import (
++	"errors"
+ 	"fmt"
+ 	"strings"
+ 	"time"
+@@ -28,24 +29,32 @@ func (s *FreezerGroup) Apply(d *cgroupData) error {
+ 
+ func (s *FreezerGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 	switch cgroup.Resources.Freezer {
+-	case configs.Frozen, configs.Thawed:
+-		for {
++	case configs.Frozen:
++		for i := 0; i < 1000; i++ {
++			if i%50 == 49 {
++				writeFile(path, "freezer.state", string(configs.Thawed))
++				time.Sleep(10 * time.Millisecond)
++			}
+ 			// In case this loop does not exit because it doesn't get the expected
+ 			// state, let's write again this state, hoping it's going to be properly
+ 			// set this time. Otherwise, this loop could run infinitely, waiting for
+ 			// a state change that would never happen.
+-			if err := writeFile(path, "freezer.state", string(cgroup.Resources.Freezer)); err != nil {
++			if err := writeFile(path, "freezer.state", string(configs.Frozen)); err != nil {
+ 				return err
+ 			}
+ 			state, err := readFile(path, "freezer.state")
+ 			if err != nil {
+ 				return err
+ 			}
+-			if strings.TrimSpace(state) == string(cgroup.Resources.Freezer) {
+-				break
++			if strings.TrimSpace(state) == string(configs.Frozen) {
++				return nil
+ 			}
+ 			time.Sleep(1 * time.Millisecond)
+ 		}
++		writeFile(path, "freezer.state", string(configs.Thawed))
++		return errors.New("unable to freeze")
++	case configs.Thawed:
++		return writeFile(path, "freezer.state", string(configs.Thawed))
+ 	case configs.Undefined:
+ 		return nil
+ 	default:
+-- 
+1.8.3.1
+

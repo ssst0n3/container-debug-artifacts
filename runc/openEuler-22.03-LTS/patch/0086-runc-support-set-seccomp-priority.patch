@@ -1,0 +1,68 @@
+From f0cff0f9ff831b2380d6907ac1b640eb998c4d88 Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Wed, 30 Jan 2019 15:33:44 +0800
+Subject: [PATCH 86/94] runc:  support set seccomp priority
+
+reason:support set seccomp priority
+
+Change-Id: I73ea0ca4ce5dc7af975c62b56edbae03f9721e76
+Signed-off-by: gus.gao <gus.gao@huawei.com>
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ libcontainer/configs/config.go        | 7 ++++---
+ libcontainer/seccomp/seccomp_linux.go | 2 +-
+ libcontainer/specconv/spec_linux.go   | 7 ++++---
+ 3 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 78a7d1d..9074c86 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -76,9 +76,10 @@ type Arg struct {
+ 
+ // Syscall is a rule to match a syscall in Seccomp
+ type Syscall struct {
+-	Name   string `json:"name"`
+-	Action Action `json:"action"`
+-	Args   []*Arg `json:"args"`
++	Name     string `json:"name"`
++	Action   Action `json:"action"`
++	Priority uint8  `json:"priority,omitempty"`
++	Args     []*Arg `json:"args"`
+ }
+ 
+ // TODO Windows. Many of these fields should be factored out into those parts
+diff --git a/libcontainer/seccomp/seccomp_linux.go b/libcontainer/seccomp/seccomp_linux.go
+index 518d2c3..db4bb4e 100644
+--- a/libcontainer/seccomp/seccomp_linux.go
++++ b/libcontainer/seccomp/seccomp_linux.go
+@@ -198,7 +198,7 @@ func matchCall(filter *libseccomp.ScmpFilter, call *configs.Syscall) error {
+ 		}
+ 	}
+ 
+-	return nil
++	return filter.SetSyscallPriority(callNum, call.Priority)
+ }
+ 
+ func parseStatusFile(path string) (map[string]string, error) {
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index a8cf114..8c4567c 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -757,9 +757,10 @@ func setupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
+ 
+ 		for _, name := range call.Names {
+ 			newCall := configs.Syscall{
+-				Name:   name,
+-				Action: newAction,
+-				Args:   []*configs.Arg{},
++				Name:     name,
++				Action:   newAction,
++				Priority: call.Priority,
++				Args:     []*configs.Arg{},
+ 			}
+ 			// Loop through all the arguments of the syscall and convert them
+ 			for _, arg := range call.Args {
+-- 
+2.7.4.3
+

@@ -1,0 +1,28 @@
+From 0eb0fdb40b1f1a80d07c95c59e391e44ea646b01 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Tue, 9 Jun 2020 01:52:46 +0800
+Subject: [PATCH] runc: use git-commit to store commit ID
+
+Change-Id: I9b2e44691dafc2ced0523ed8423f3cb29bebd502
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ Makefile | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index b24c22b..60d1d57 100644
+--- a/Makefile
++++ b/Makefile
+@@ -10,8 +10,7 @@ GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
+ RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
+ PROJECT := github.com/opencontainers/runc
+ BUILDTAGS := seccomp
+-COMMIT_NO := $(shell git rev-parse HEAD 2> /dev/null || true)
+-COMMIT := $(if $(shell git status --porcelain --untracked-files=no),"${COMMIT_NO}-dirty","${COMMIT_NO}")
++COMMIT := $(shell cat ./git-commit | head -c 40)
+ 
+ MAN_DIR := $(CURDIR)/man/man8
+ MAN_PAGES = $(shell ls $(MAN_DIR)/*.8)
+-- 
+1.8.3.1
+

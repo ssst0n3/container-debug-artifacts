@@ -1,0 +1,44 @@
+From 0a64bd10e05937427255dada4b6e1b12f31265f0 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Tue, 23 Apr 2019 22:35:45 +0800
+Subject: [PATCH] runc: set makefile buildid
+
+reason: set makefile buildid
+
+Change-Id: Ia547dbc383bffe6532168881a7376df1d990fd30
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ Makefile | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 76423d8..0352e40 100644
+--- a/Makefile
++++ b/Makefile
+@@ -31,19 +31,19 @@ BEP_FLAG := "-tmpdir=${BEP_DIR}"
+ 
+ runc: $(SOURCES)
+ 	mkdir -p ${BEP_DIR}
+-	go build -i -ldflags " ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o runc .
++	go build -i -ldflags " -buildid=IdByIsula ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o runc .
+ 
+ all: runc recvtty
+ 
+ recvtty: contrib/cmd/recvtty/recvtty
+ 
+ contrib/cmd/recvtty/recvtty: $(SOURCES)
+-	go build -i -ldflags " ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
++	go build -i -ldflags " -buildid=IdByIsula ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
+ static: $(SOURCES)
+ 	mkdir -p ${BEP_DIR}
+-	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
+-	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
++	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -buildid=IdByIsula -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
++	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -buildid=IdByIsula -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
+ release:
+ 	@flag_list=(seccomp selinux apparmor static); \
+-- 
+1.8.3.1
+

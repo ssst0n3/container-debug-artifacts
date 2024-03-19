@@ -1,0 +1,214 @@
+From 7e65e11136e81a834effe40a9f926416fb1eea78 Mon Sep 17 00:00:00 2001
+From: Will Martin <wmartin@pivotal.io>
+Date: Mon, 22 Jan 2018 17:03:02 +0000
+Subject: [PATCH 50/94] runc: Avoid race when opening exec fifo
+
+
+[Changelog]: Avoid race when opening exec fifo
+
+When starting a container with `runc start` or `runc run`, the stub
+process (runc[2:INIT]) opens a fifo for writing. Its parent runc process
+will open the same fifo for reading. In this way, they synchronize.
+
+If the stub process exits at the wrong time, the parent runc process
+will block forever.
+
+This can happen when racing 2 runc operations against each other: `runc
+run/start`, and `runc delete`. It could also happen for other reasons,
+e.g. the kernel's OOM killer may select the stub process.
+
+This commit resolves this race by racing the opening of the exec fifo
+from the runc parent process against the stub process exiting. If the
+stub process exits before we open the fifo, we return an error.
+
+Another solution is to wait on the stub process. However, it seems it
+would require more refactoring to avoid calling wait multiple times on
+the same process, which is an error.
+
+This is cherry-picked from runc upstream:
+ https://github.com/opencontainers/runc/pull/1698
+[Author]:Shukui Yang
+
+Change-Id: Id0ba756349b59463f7ee19ad63a6f243bee4a729
+Signed-off-by: Craig Furman <cfurman@pivotal.io>
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/container_linux.go | 69 +++++++++++++++++++++++++++++++++++------
+ libcontainer/system/proc.go     | 59 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 119 insertions(+), 9 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 74b82c5..278f597 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -5,6 +5,7 @@ package libcontainer
+ import (
+ 	"bytes"
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
+ 	"io"
+ 	"io/ioutil"
+@@ -239,20 +240,70 @@ func (c *linuxContainer) Exec() error {
+ 
+ func (c *linuxContainer) exec() error {
+ 	path := filepath.Join(c.root, execFifoFilename)
+-	f, err := os.OpenFile(path, os.O_RDONLY, 0)
+-	if err != nil {
+-		return newSystemErrorWithCause(err, "open exec fifo for reading")
++
++	fifoOpen := make(chan struct{})
++	select {
++	case <-awaitProcessExit(c.initProcess.pid(), fifoOpen):
++		return errors.New("container process is already dead")
++	case result := <-awaitFifoOpen(path):
++		close(fifoOpen)
++		if result.err != nil {
++			return result.err
++		}
++		f := result.file
++		defer f.Close()
++		if err := readFromExecFifo(f); err != nil {
++			return err
++		}
++		return os.Remove(path)
+ 	}
+-	defer f.Close()
+-	data, err := ioutil.ReadAll(f)
++}
++
++func readFromExecFifo(execFifo io.Reader) error {
++	data, err := ioutil.ReadAll(execFifo)
+ 	if err != nil {
+ 		return err
+ 	}
+-	if len(data) > 0 {
+-		os.Remove(path)
+-		return nil
++	if len(data) <= 0 {
++		return fmt.Errorf("cannot start an already running container")
+ 	}
+-	return fmt.Errorf("cannot start an already running container")
++	return nil
++}
++
++func awaitProcessExit(pid int, exit <-chan struct{}) <-chan struct{} {
++	isDead := make(chan struct{})
++	go func() {
++		for {
++			select {
++			case <-exit:
++				return
++			case <-time.After(time.Millisecond * 100):
++				stat, err := system.GetProcessState(pid)
++				if err != nil || stat == system.Zombie {
++					close(isDead)
++					return
++				}
++			}
++		}
++	}()
++	return isDead
++}
++
++func awaitFifoOpen(path string) <-chan openResult {
++	fifoOpened := make(chan openResult)
++	go func() {
++		f, err := os.OpenFile(path, os.O_RDONLY, 0)
++		if err != nil {
++			fifoOpened <- openResult{err: newSystemErrorWithCause(err, "open exec fifo for reading")}
++		}
++		fifoOpened <- openResult{file: f}
++	}()
++	return fifoOpened
++}
++
++type openResult struct {
++	file *os.File
++	err  error
+ }
+ 
+ func (c *linuxContainer) start(process *Process, isInit bool) error {
+diff --git a/libcontainer/system/proc.go b/libcontainer/system/proc.go
+index a0e9637..03fd940 100644
+--- a/libcontainer/system/proc.go
++++ b/libcontainer/system/proc.go
+@@ -1,12 +1,48 @@
+ package system
+ 
+ import (
++	"fmt"
+ 	"io/ioutil"
+ 	"path/filepath"
+ 	"strconv"
+ 	"strings"
+ )
+ 
++type State rune
++
++const ( // Only values for Linux 3.14 and later are listed here
++	Dead        State = 'X'
++	DiskSleep   State = 'D'
++	Running     State = 'R'
++	Sleeping    State = 'S'
++	Stopped     State = 'T'
++	TracingStop State = 't'
++	Zombie      State = 'Z'
++)
++
++// String forms of the state from proc(5)'s documentation for
++// /proc/[pid]/status' "State" field.
++func (s State) String() string {
++	switch s {
++	case Dead:
++		return "dead"
++	case DiskSleep:
++		return "disk sleep"
++	case Running:
++		return "running"
++	case Sleeping:
++		return "sleeping"
++	case Stopped:
++		return "stopped"
++	case TracingStop:
++		return "tracing stop"
++	case Zombie:
++		return "zombie"
++	default:
++		return fmt.Sprintf("unknown (%c)", s)
++	}
++}
++
+ // look in /proc to find the process start time so that we can verify
+ // that this pid has started after ourself
+ func GetProcessStartTime(pid int) (string, error) {
+@@ -41,3 +77,26 @@ func parseStartTime(stat string) (string, error) {
+ 	parts := strings.Split(strings.TrimSpace(s[len(s)-1]), " ")
+ 	return parts[22-3], nil // starts at 3 (after the filename pos `2`)
+ }
++
++func GetProcessState(pid int) (State, error) {
++	data, err := ioutil.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
++	if err != nil {
++		return State(0), err
++	}
++	return parseState(string(data))
++
++}
++
++func parseState(data string) (State, error) {
++	i := strings.LastIndex(data, ")")
++	if i <= 2 || i >= len(data)-3 {
++		return State(0), fmt.Errorf("invalid stat data: %q", data)
++	}
++
++	parts := strings.Split(data[i+2:], " ")
++
++	var state int
++	fmt.Sscanf(parts[3-3], "%c", &state)
++	stateStr := State(state)
++	return stateStr, nil
++}
+-- 
+2.7.4.3
+

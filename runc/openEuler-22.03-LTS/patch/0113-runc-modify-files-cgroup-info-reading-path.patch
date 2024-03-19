@@ -1,0 +1,79 @@
+From 6c40c8e9d74a61bbca97b1c98efaa5e1f75a02e1 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Fri, 1 Nov 2019 00:46:28 +0800
+Subject: [PATCH] runc: modify files cgroup info reading path
+
+reason: modify files crgoup info reading path in case user sets --cgroup-parent.
+
+Change-Id: If33fe87cafe813d2e40b664c52c31416c16e4587
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/container_linux.go     |  2 +-
+ libcontainer/standard_init_linux.go | 30 ++++++++++--------------------
+ 2 files changed, 11 insertions(+), 21 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 3ee7d5f..e7c178b 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -310,7 +310,7 @@ func (c *linuxContainer) start(process *Process) error {
+ 		return newSystemErrorWithCause(err, "creating new parent process")
+ 	}
+ 	if err := parent.start(); err != nil {
+-		printFilesInfo(c.id)
++		printFilesInfo(c.config.Cgroups.Path)
+ 		// terminate the process to ensure that it properly is reaped.
+ 		if err := parent.terminate(); err != nil {
+ 			logrus.Warn(err)
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index ac6b3bf..96901ef 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -7,6 +7,7 @@ import (
+ 	"io/ioutil"
+ 	"os"
+ 	"os/exec"
++	"path/filepath"
+ 	"strings"
+ 	"syscall"
+ 	"time"
+@@ -222,27 +223,16 @@ func (l *linuxStandardInit) Init() error {
+ }
+ 
+ func printMemoryInfo() {
+-	output, err := ioutil.ReadFile("/proc/meminfo")
+-	if err != nil {
+-		logrus.Errorf("Failed to read /proc/meminfo, %v", err)
+-	} else {
+-		logrus.Infof("print memory info (/proc/meminfo): %s", string(output))
+-	}
++	printFileContent("/proc/meminfo")
++	printFileContent("/sys/fs/cgroup/memory/memory.stat")
++}
+ 
+-	output, err = ioutil.ReadFile("/sys/fs/cgroup/memory/memory.stat")
+-	if err != nil {
+-		logrus.Errorf("Failed to read /sys/fs/cgroup/memory/memory.stat, %v", err)
+-	} else {
+-		logrus.Infof("print memory info (cgroup memory.stat): %s", string(output))
+-	}
++func printFilesInfo(path string) {
++	printFileContent(filepath.Join("/sys/fs/cgroup/files", path, "/files.limit"))
++	printFileContent(filepath.Join("/sys/fs/cgroup/files", path, "/files.usage"))
+ }
+ 
+-func printFilesInfo(id string) {
+-	if id != "" {
+-		id = "docker/" + id + "/"
+-	}
+-	output, err := ioutil.ReadFile("/sys/fs/cgroup/files/" + id + "files.limit")
+-	logrus.Errorf("cgroup files.limit: %s, err: %v", string(output), err)
+-	output, err = ioutil.ReadFile("/sys/fs/cgroup/files/" + id + "files.usage")
+-	logrus.Errorf("cgroup files.usage: %s, err: %v", string(output), err)
++func printFileContent(path string) {
++	output, err := ioutil.ReadFile(path)
++	logrus.Infof("content read from %s: %s, err: %v", path, string(output), err)
+ }
+-- 
+1.8.3.1
+

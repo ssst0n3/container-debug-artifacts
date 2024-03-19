@@ -1,0 +1,120 @@
+From 0b0bb50e4ecdebfb2646adb57e53972663947320 Mon Sep 17 00:00:00 2001
+From: wangfengtu <wangfengtu@huawei.com>
+Date: Wed, 27 Mar 2019 15:28:03 +0800
+Subject: [PATCH] runc:  Fix mountpoint leak and pivot_root error
+
+reason:We have no way to get exact /proc/self/mountinfo infomation
+because it can change if other process mount/umount mountpoint. So
+runc sometimes cannot get container's mountpoint when runc try to
+make mountpoint private. This can cause mountpoint leak and pivot_root
+error, runc error out like this:
+```
+Handler for POST
+/v1.23/containers/1d265651cb1d5475bcb7d5db21679757d5527d44a41c102c6aa4bddaa518c547/start
+returned error: oci runtime error: container_linux.go:317: starting
+container process caused \"process_linux.go:358: container init caused
+\\\"rootfs_linux.go:105: jailing process inside rootfs caused
+\\\\\\\"pivot_root invalid argument\\\\\\\"\\\"\"\n
+```
+
+Change-Id: Icde1638af6ad45c762c11fc8a2b8a969b6306ca5
+Signed-off-by: wangfengtu <wangfengtu@huawei.com>
+---
+ libcontainer/rootfs_linux.go                       | 32 ++++++++++++----------
+ .../docker/docker/pkg/mount/mountinfo_linux.go     |  7 +++--
+ 2 files changed, 21 insertions(+), 18 deletions(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 3dd5113..53797e9 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -24,7 +24,10 @@ import (
+ 	"github.com/opencontainers/selinux/go-selinux/label"
+ )
+ 
+-const defaultMountFlags = syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
++const (
++	defaultMountFlags = syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
++	maxRetryTimes     = 5
++)
+ 
+ // needsSetupDev returns true if /dev needs to be set up.
+ func needsSetupDev(config *configs.Config) bool {
+@@ -545,23 +548,16 @@ func getMountInfo(mountinfo []*mount.Info, dir string) *mount.Info {
+ // Get the parent mount point of directory passed in as argument. Also return
+ // optional fields.
+ func getParentMount(rootfs string) (string, string, error) {
+-	var path string
+-
+-	mountinfos, err := mount.GetMounts()
+-	if err != nil {
+-		return "", "", err
+-	}
+-
+-	mountinfo := getMountInfo(mountinfos, rootfs)
+-	if mountinfo != nil {
+-		return rootfs, mountinfo.Optional, nil
+-	}
++	retryTimes := maxRetryTimes
++	path := rootfs
+ 
+-	path = rootfs
+ 	for {
+-		path = filepath.Dir(path)
++		mountinfos, err := mount.GetMounts()
++		if err != nil {
++			return "", "", err
++		}
+ 
+-		mountinfo = getMountInfo(mountinfos, path)
++		mountinfo := getMountInfo(mountinfos, path)
+ 		if mountinfo != nil {
+ 			return path, mountinfo.Optional, nil
+ 		}
+@@ -569,6 +565,12 @@ func getParentMount(rootfs string) (string, string, error) {
+ 		if path == "/" {
+ 			break
+ 		}
++
++		retryTimes--
++		if retryTimes == 0 {
++			retryTimes = maxRetryTimes
++			path = filepath.Dir(path)
++		}
+ 	}
+ 
+ 	// If we are here, we did not find parent mount. Something is wrong.
+diff --git a/vendor/github.com/docker/docker/pkg/mount/mountinfo_linux.go b/vendor/github.com/docker/docker/pkg/mount/mountinfo_linux.go
+index be69fee..b74773f 100644
+--- a/vendor/github.com/docker/docker/pkg/mount/mountinfo_linux.go
++++ b/vendor/github.com/docker/docker/pkg/mount/mountinfo_linux.go
+@@ -4,8 +4,10 @@ package mount
+ 
+ import (
+ 	"bufio"
++	"bytes"
+ 	"fmt"
+ 	"io"
++	"io/ioutil"
+ 	"os"
+ 	"strings"
+ )
+@@ -31,13 +33,12 @@ const (
+ // Parse /proc/self/mountinfo because comparing Dev and ino does not work from
+ // bind mounts
+ func parseMountTable() ([]*Info, error) {
+-	f, err := os.Open("/proc/self/mountinfo")
++	content, err := ioutil.ReadFile("/proc/self/mountinfo")
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	defer f.Close()
+ 
+-	return parseInfoFile(f)
++	return parseInfoFile(bytes.NewReader(content))
+ }
+ 
+ func parseInfoFile(r io.Reader) ([]*Info, error) {
+-- 
+2.7.4
+

@@ -1,0 +1,74 @@
+From 52e08b0e3d4e44d555efde15a4ab698500d060db Mon Sep 17 00:00:00 2001
+From: jingrui <jingrui@huawei.com>
+Date: Tue, 15 Jan 2019 15:16:54 +0800
+Subject: [PATCH 83/94] log:  fix runc log decode failed
+
+reason: plain logs can not parsed by containerd, using json formatted
+error logs.
+
+Change-Id: I293454c038c3b4f36a8ac9df07fc3557c51179e1
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ main.go | 30 +++++++++++++++++++++++++-----
+ 1 file changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/main.go b/main.go
+index 5f0ec91..0476242 100644
+--- a/main.go
++++ b/main.go
+@@ -1,15 +1,18 @@
+ package main
+ 
+ import (
++	"encoding/json"
+ 	"fmt"
+-	"github.com/Sirupsen/logrus"
+-	"github.com/Sirupsen/logrus/hooks/syslog"
+-	"github.com/opencontainers/runtime-spec/specs-go"
+-	"github.com/urfave/cli"
+ 	"io"
+ 	"log/syslog"
+ 	"os"
+ 	"strings"
++	"time"
++
++	"github.com/Sirupsen/logrus"
++	"github.com/Sirupsen/logrus/hooks/syslog"
++	"github.com/opencontainers/runtime-spec/specs-go"
++	"github.com/urfave/cli"
+ )
+ 
+ // version will be populated by the Makefile, read from
+@@ -123,7 +126,7 @@ func main() {
+ 			logrus.SetOutput(f)
+ 			hook, serr := logrus_syslog.NewSyslogHook("", "", syslog.LOG_INFO|syslog.LOG_USER, "docker-runc")
+ 			if serr != nil {
+-				fmt.Fprint(f, fmt.Sprintf("new syslog hook get %s", serr))
++				logToFile(f, "error", fmt.Sprintf("new syslog hook get %s", serr))
+ 			} else {
+ 				logrus.AddHook(hook)
+ 			}
+@@ -167,3 +170,20 @@ func (f *FatalWriter) Write(p []byte) (n int, err error) {
+ 	logrus.Error(string(p))
+ 	return f.cliErrWriter.Write(p)
+ }
++
++func logToFile(f io.Writer, level string, msg string) {
++	var (
++		log struct {
++			Level string
++			Msg   string
++			Time  time.Time
++		}
++	)
++	log.Level = level
++	log.Msg = msg
++	log.Time = time.Now()
++	s, err := json.Marshal(log)
++	if err != nil {
++		fmt.Fprint(f, string(s))
++	}
++}
+-- 
+2.7.4.3
+

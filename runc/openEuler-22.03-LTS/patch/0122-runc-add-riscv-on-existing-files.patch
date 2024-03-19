@@ -1,0 +1,36 @@
+From b5cf892c9d9609872da81970013a433f998305ea Mon Sep 17 00:00:00 2001
+From: yangyanchao <yangyanchao6@huawei.com>
+Date: Tue, 15 Dec 2020 03:04:18 +0000
+Subject: [PATCH 2/2] runc-add-sys-symbol-to-support-riscv
+
+---
+ libcontainer/system/syscall_linux_64.go       | 2 +-
+ vendor/golang.org/x/sys/unix/endian_little.go | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/libcontainer/system/syscall_linux_64.go b/libcontainer/system/syscall_linux_64.go
+index 0816bf8..6e89196 100644
+--- a/libcontainer/system/syscall_linux_64.go
++++ b/libcontainer/system/syscall_linux_64.go
+@@ -1,4 +1,4 @@
+-// +build linux,arm64 linux,amd64 linux,ppc linux,ppc64 linux,ppc64le linux,s390x
++// +build linux,arm64 linux,amd64 linux,ppc linux,ppc64 linux,ppc64le linux,s390x linux,riscv64
+ 
+ package system
+ 
+diff --git a/vendor/golang.org/x/sys/unix/endian_little.go b/vendor/golang.org/x/sys/unix/endian_little.go
+index 9ed865f..88903f6 100644
+--- a/vendor/golang.org/x/sys/unix/endian_little.go
++++ b/vendor/golang.org/x/sys/unix/endian_little.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ //
+-// +build 386 amd64 amd64p32 arm arm64 ppc64le mips64le
++// +build 386 amd64 amd64p32 arm arm64 ppc64le mips64le riscv64
+ 
+ package unix
+ 
+-- 
+2.23.0
+

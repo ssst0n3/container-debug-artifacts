@@ -1,0 +1,78 @@
+From 0a760e4753e743a0fe874471584d378b81a02d07 Mon Sep 17 00:00:00 2001
+From: zhangyuyun <zhangyuyun@huawei.com>
+Date: Thu, 15 Nov 2018 01:10:44 -0500
+Subject: [PATCH 74/94] runc:  fix check sysctl in host network mode
+
+reason:it's found failed in runc to check if the container is in
+	the host namespace,which introduced by
+	https://github.com/opencontainers/runc/pull/1138
+	https://github.com/opencontainers/runc/pull/1221
+
+Change-Id: If1374c081cea93c700d627b40d2ca1ad58b5fb83
+---
+ libcontainer/configs/validate/validator.go | 27 ++++++++++++++++++---------
+ script/runc-euleros.spec                   |  2 +-
+ 2 files changed, 19 insertions(+), 10 deletions(-)
+
+diff --git a/libcontainer/configs/validate/validator.go b/libcontainer/configs/validate/validator.go
+index 8284345..5cb50fb 100644
+--- a/libcontainer/configs/validate/validator.go
++++ b/libcontainer/configs/validate/validator.go
+@@ -5,6 +5,7 @@ import (
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
++	"syscall"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	selinux "github.com/opencontainers/selinux/go-selinux"
+@@ -177,16 +178,24 @@ func checkHostNs(sysctlConfig string, path string) error {
+ 		return fmt.Errorf("could not check that %q is a symlink: %v", path, err)
+ 	}
+ 
++	var destOfContainer string
+ 	if symLink == false {
+-		// The provided namespace is not a symbolic link,
+-		// it is not the host namespace.
+-		return nil
+-	}
+-
+-	// readlink on the path provided in the struct
+-	destOfContainer, err := os.Readlink(path)
+-	if err != nil {
+-		return fmt.Errorf("read soft link %q error", path)
++		// try getting inode number for comparsion
++		f, err := os.Stat(path)
++		if err != nil {
++			return err
++		}
++		stat, ok := f.Sys().(*syscall.Stat_t)
++		if !ok {
++			return fmt.Errorf("cannot convert stat value of %q to syscall.Stat_t", path)
++		}
++		destOfContainer = fmt.Sprintf("net:[%d]", stat.Ino)
++	} else {
++		// readlink on the path provided in the struct
++		destOfContainer, err = os.Readlink(path)
++		if err != nil {
++			return fmt.Errorf("read soft link %q error", path)
++		}
+ 	}
+ 	if destOfContainer == destOfCurrentProcess {
+ 		return fmt.Errorf("sysctl %q is not allowed in the hosts network namespace", sysctlConfig)
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 536678d..0e92bf0 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 12%{?dist}
++Release: 13%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

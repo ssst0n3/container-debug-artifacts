@@ -1,0 +1,46 @@
+From 3b61668af89b820482b0a58f5af5316e1529116b Mon Sep 17 00:00:00 2001
+From: Deng Guangxing <dengguangxing@huawei.com>
+Date: Wed, 6 Sep 2017 15:04:47 +0800
+Subject: [PATCH 42/94] update state earlier to avoid cgroup leak when
+ process failed
+
+if process stuck in somewhere. upper caller like containerd may
+have a timeout for process launching.
+
+process will be killed after this timeout, and then call `runc
+delete` to retrieve its resource like cgroup and perform poststop
+hook.
+
+if process got stuck right before updating state, and after cgroup
+applied, like prestart-hook. In such case, `runc delete xxx` will
+do nothing because state file is missing, runc is not aware of this
+container. so process cgroup will stay and never get removed.
+
+This patch perform state updating right after cgroup applying. so
+`runc delete` will do the cleaning job
+
+Change-Id: I7b247f501986e712a86da3958d1be573af4e84a6
+Signed-off-by: Deng Guangxing <dengguangxing@huawei.com>
+---
+ libcontainer/process_linux.go | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index c9fb202..9373595 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -260,6 +260,11 @@ func (p *initProcess) start() error {
+ 	if err := p.manager.Apply(p.pid()); err != nil {
+ 		return newSystemErrorWithCause(err, "applying cgroup configuration for process")
+ 	}
++	// update state here, so we can retrieve process resource
++	// even it get killed by accident
++	if _, err := p.container.updateState(p); err != nil {
++		return err
++	}
+ 	defer func() {
+ 		if err != nil {
+ 			// TODO: should not be the responsibility to call here
+-- 
+2.7.4.3
+

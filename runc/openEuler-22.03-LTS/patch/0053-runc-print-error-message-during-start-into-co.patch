@@ -1,0 +1,36 @@
+From 165870fb442ca29a208a3d17f8ece6b8e74da2de Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Wed, 22 Aug 2018 17:04:19 +0800
+Subject: [PATCH 53/94] runc: print error message during start into
+ container log
+
+[Changelog]:cherry-pick from vtwrse <75eba7a697edde39e25e39c870a33f3dc5fb327a>
+Change-Id: Id23f14690d77a4f79611e82f4e2ece41d9b19edf
+Signed-off-by: jiangpengfei9 <jiangpengfei9@huawei.com>
+---
+ main_unix.go | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/main_unix.go b/main_unix.go
+index b601abc..56904e0 100644
+--- a/main_unix.go
++++ b/main_unix.go
+@@ -3,6 +3,7 @@
+ package main
+ 
+ import (
++	"fmt"
+ 	"os"
+ 	"runtime"
+ 
+@@ -24,6 +25,7 @@ var initCommand = cli.Command{
+ 	Action: func(context *cli.Context) error {
+ 		factory, _ := libcontainer.New("")
+ 		if err := factory.StartInitialization(); err != nil {
++			fmt.Fprintf(os.Stderr, "libcontainer: container start initialization failed: %s", err)
+ 			// as the error is sent back to the parent there is no need to log
+ 			// or write it to stderr because the parent process will handle this
+ 			os.Exit(1)
+-- 
+2.7.4.3
+

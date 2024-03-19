@@ -1,0 +1,180 @@
+From eb576e28687555ba9253a2679706bf5491be0c11 Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Fri, 24 Apr 2020 23:05:31 +0800
+Subject: [PATCH] runc: don't deny all devices when update cgroup resource
+
+reason: runc Update command causes  'Operation not permitted
+
+cherry-pick from https://github.com/opencontainers/runc/pull/2204
+cherry-pick from https://github.com/opencontainers/runc/pull/2205
+
+It's first seen in a kubernetes cluster with docker as container runtime.
+Our users reported that in some situation their bash script failed with message
+can't create /dev/null: Operation not permitted.
+But /dev/null is default device with permission rwm,
+After digging some logs, we found that it can be reproduced in runc by following steps.
+
+- Run a runc container like "busybox". Suppose this container is called A
+- run while true;do echo >/dev/null;done in container
+- runc update --cpu-share 1024 A
+- You will see sh: can't create /dev/null: Operation not permitted
+
+Change-Id: I4f374eed5033b9f3eb47c31b622c408d24142473
+Signed-off-by: panwenxiang <panwenxiang@huawei.com>
+---
+ libcontainer/cgroups/fs/devices.go      | 72 +++++++++++++++++++++----
+ libcontainer/cgroups/fs/devices_test.go |  8 +++
+ 2 files changed, 71 insertions(+), 9 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/devices.go b/libcontainer/cgroups/fs/devices.go
+index 478b5db7..c5ca11f5 100644
+--- a/libcontainer/cgroups/fs/devices.go
++++ b/libcontainer/cgroups/fs/devices.go
+@@ -10,11 +10,18 @@ import (
+ 	"io"
+ 	"os"
+ 	"path/filepath"
++	"strings"
+ )
+ 
+ type DevicesGroup struct {
+ }
+ 
++type Empty struct{}
++
++var (
++	defaultDevice = &configs.Device{Type: 'a', Major: -1, Minor: -1, Permissions: "rwm"}
++)
++
+ func (s *DevicesGroup) Name() string {
+ 	return "devices"
+ }
+@@ -61,6 +68,10 @@ func (s *DevicesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 		return err
+ 	}
+ 
++	oldAllowedDevices, err := readDevicesExceptDefault(path)
++	if err != nil {
++		return err
++	}
+ 	devices := cgroup.Resources.Devices
+ 	if len(devices) > 0 {
+ 		for _, dev := range devices {
+@@ -68,10 +79,17 @@ func (s *DevicesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 			if dev.Allow {
+ 				file = "devices.allow"
+ 			}
+-			if err := writeFile(path, file, dev.CgroupString()); err != nil {
+-				return err
++			// For the second time set, we don't deny all devices, skip
++			if dev.Type == defaultDevice.Type && len(oldAllowedDevices) != 0 {
++				file = ""
++			}
++
++			if len(file) > 0 {
++				if err := writeFile(path, file, dev.CgroupString()); err != nil {
++					return err
++				}
++				delete(deviceMap, dev.CgroupString())
+ 			}
+-			delete(deviceMap, dev.CgroupString())
+ 		}
+ 		for item, _ := range deviceMap {
+ 			if item[0] == 'b' || item[0] == 'c' {
+@@ -84,13 +102,31 @@ func (s *DevicesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 	}
+ 	if cgroup.Resources.AllowAllDevices != nil {
+ 		if *cgroup.Resources.AllowAllDevices == false {
+-			if err := writeFile(path, "devices.deny", "a"); err != nil {
+-				return err
++			if len(oldAllowedDevices) == 0 {
++				if err := writeFile(path, "devices.deny", "a"); err != nil {
++					return err
++				}
+ 			}
+ 
+-			for _, dev := range cgroup.Resources.AllowedDevices {
+-				if err := writeFile(path, "devices.allow", dev.CgroupString()); err != nil {
+-					return err
++			newAllowedDevices := make(map[string]Empty)
++			for _, dev := range cgroup.AllowedDevices {
++				newAllowedDevices[dev.CgroupString()] = Empty{}
++			}
++			// Deny no longer allowed devices
++			for cgroupString := range oldAllowedDevices {
++				if _, found := newAllowedDevices[cgroupString]; !found {
++					if err := writeFile(path, "devices.deny", cgroupString); err != nil {
++						return err
++					}
++				}
++			}
++
++			// Allow new devices
++			for cgroupString := range newAllowedDevices {
++				if _, found := oldAllowedDevices[cgroupString]; !found {
++					if err := writeFile(path, "devices.allow", cgroupString); err != nil {
++						return err
++					}
+ 				}
+ 			}
+ 			return nil
+@@ -100,7 +136,6 @@ func (s *DevicesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 			return err
+ 		}
+ 	}
+-
+ 	for _, dev := range cgroup.Resources.DeniedDevices {
+ 		if err := writeFile(path, "devices.deny", dev.CgroupString()); err != nil {
+ 			return err
+@@ -117,3 +152,22 @@ func (s *DevicesGroup) Remove(d *cgroupData) error {
+ func (s *DevicesGroup) GetStats(path string, stats *cgroups.Stats) error {
+ 	return nil
+ }
++
++func readDevicesExceptDefault(path string) (allowed map[string]Empty, err error) {
++	cgroupData, err := readFile(path, "devices.list")
++	if err != nil {
++		return nil, err
++	}
++
++	allowedDevices := make(map[string]Empty)
++	defaultDeviceString := defaultDevice.CgroupString()
++	for _, data := range strings.Split(cgroupData, "\n") {
++		// skip allow all devices
++		if len(data) == 0 || data == defaultDeviceString {
++			continue
++		}
++		allowedDevices[data] = Empty{}
++	}
++
++	return allowedDevices, nil
++}
+diff --git a/libcontainer/cgroups/fs/devices_test.go b/libcontainer/cgroups/fs/devices_test.go
+index fc635b99..1184c459 100644
+--- a/libcontainer/cgroups/fs/devices_test.go
++++ b/libcontainer/cgroups/fs/devices_test.go
+@@ -37,6 +37,10 @@ func TestDevicesSetAllow(t *testing.T) {
+ 	helper := NewCgroupTestUtil("devices", t)
+ 	defer helper.cleanup()
+ 
++	helper.writeFileContents(map[string]string{
++		"devices.list": "a *:* rwm",
++	})
++
+ 	helper.writeFileContents(map[string]string{
+ 		"devices.deny": "a",
+ 	})
+@@ -75,6 +79,10 @@ func TestDevicesSetDeny(t *testing.T) {
+ 	helper := NewCgroupTestUtil("devices", t)
+ 	defer helper.cleanup()
+ 
++	helper.writeFileContents(map[string]string{
++		"devices.list": "a *:* rwm",
++	})
++
+ 	helper.writeFileContents(map[string]string{
+ 		"devices.allow": "a",
+ 	})
+-- 
+2.21.0
+

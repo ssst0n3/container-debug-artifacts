@@ -1,0 +1,104 @@
+From f5399113b70807b57ed557bfecf932e5448016c2 Mon Sep 17 00:00:00 2001
+From: dengguangxing <dengguangxing@huawei.com>
+Date: Mon, 22 Jan 2018 20:27:37 +0800
+Subject: [PATCH 47/94] runc: add more specific log for hooks
+
+[Changelog]: add more specific log for hooks
+[Author]:Shukui Yang
+
+Change-Id: I317232b42a5fd6bc16773fe4aa0a376d8b9b6806
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/container_linux.go | 5 +++++
+ libcontainer/process_linux.go   | 5 +++++
+ libcontainer/state_linux.go     | 3 +++
+ 3 files changed, 13 insertions(+)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 9fabadc..74b82c5 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -290,12 +290,15 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
+ 				Root: c.config.Rootfs,
+ 			}
+ 			for i, hook := range c.config.Hooks.Poststart {
++				logrus.Infof("run poststart hook %d:%s", i, hook.Info())
+ 				if err := hook.Run(s); err != nil {
++					logrus.Errorf("running poststart hook(%d:%s) failed: %s", i, hook.Info(), err)
+ 					if err := parent.terminate(); err != nil {
+ 						logrus.Warn(err)
+ 					}
+ 					return newSystemErrorWithCausef(err, "running poststart hook %d:%s", i, hook.Info())
+ 				}
++				logrus.Infof("poststart hook %d:%s done", i, hook.Info())
+ 			}
+ 		}
+ 	} else {
+@@ -1261,9 +1264,11 @@ func (c *linuxContainer) criuNotifications(resp *criurpc.CriuResp, process *Proc
+ 				Root: c.config.Rootfs,
+ 			}
+ 			for i, hook := range c.config.Hooks.Prestart {
++				logrus.Infof("run prestart hook: %d:%s", i, hook.Info())
+ 				if err := hook.Run(s); err != nil {
+ 					return newSystemErrorWithCausef(err, "running prestart hook %d", i)
+ 				}
++				logrus.Infof("prestart hook: %d:%s done", i, hook.Info())
+ 			}
+ 		}
+ 	case notify.GetScript() == "post-restore":
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 1b478d7..9064c0e 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -13,6 +13,7 @@ import (
+ 	"strconv"
+ 	"syscall"
+ 
++	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/system"
+@@ -306,9 +307,11 @@ func (p *initProcess) start() error {
+ 						Root: p.config.Config.Rootfs,
+ 					}
+ 					for i, hook := range p.config.Config.Hooks.Prestart {
++						logrus.Infof("run prestart hook %d:%s", i, hook.Info())
+ 						if err := hook.Run(s); err != nil {
+ 							return newSystemErrorWithCausef(err, "running prestart hook %d:%s", i, hook.Info())
+ 						}
++						logrus.Infof("prestart hook %d:%s done", i, hook.Info())
+ 					}
+ 				}
+ 			}
+@@ -329,9 +332,11 @@ func (p *initProcess) start() error {
+ 					Root: p.config.Config.Rootfs,
+ 				}
+ 				for i, hook := range p.config.Config.Hooks.Prestart {
++					logrus.Infof("run prestart hook %d:%s", i, hook.Info())
+ 					if err := hook.Run(s); err != nil {
+ 						return newSystemErrorWithCausef(err, "running prestart hook %d:%s", i, hook.Info())
+ 					}
++					logrus.Infof("prestart hook %d:%s done", i, hook.Info())
+ 				}
+ 			}
+ 			// Sync with child.
+diff --git a/libcontainer/state_linux.go b/libcontainer/state_linux.go
+index c4f0dfc..b8d2a87 100644
+--- a/libcontainer/state_linux.go
++++ b/libcontainer/state_linux.go
+@@ -66,9 +66,12 @@ func runPoststopHooks(c *linuxContainer) error {
+ 			Root: c.config.Rootfs,
+ 		}
+ 		for i, hook := range c.config.Hooks.Poststop {
++			logrus.Infof("run poststop hook %d:%s", i, hook.Info())
+ 			if err := hook.Run(s); err != nil {
++				logrus.Errorf("running poststop hook %d: %s failed: %s", i, hook.Info(), err)
+ 				return newSystemErrorWithCausef(err, "running poststop hook %d:%s", i, hook.Info())
+ 			}
++			logrus.Infof("poststop hook %d:%s done", i, hook.Info())
+ 		}
+ 	}
+ 	return nil
+-- 
+2.7.4.3
+

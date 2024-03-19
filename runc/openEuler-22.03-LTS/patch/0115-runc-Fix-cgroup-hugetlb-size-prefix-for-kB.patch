@@ -1,0 +1,54 @@
+From d46d29ea24d8fb4fc03c739e619d7d241dc5556c Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Thu, 19 Dec 2019 02:37:54 +0800
+Subject: [PATCH 4/5] runc: Fix cgroup hugetlb size prefix for kB
+
+reason:The hugetlb cgroup control files (introduced here in 2012:
+https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=abb8206cb0773)
+use "KB" and not "kB"
+(https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/mm/hugetlb_cgroup.c?h=v5.0#n349).
+
+The behavior in the kernel has not changed since the introduction, and
+the current code using "kB" will therefore fail on devices with small
+amounts of ram (see
+https://github.com/kubernetes/kubernetes/issues/77169) running a kernel
+with config flag CONFIG_HUGETLBFS=y
+
+As seen from the code in "mem_fmt" inside hugetlb_cgroup.c, only "KB",
+"MB" and "GB" are used, so the others may be removed as well.
+
+Here is a real world example of the files inside the
+"/sys/kernel/mm/hugepages/" directory:
+- "hugepages-64kB"
+- "hugepages-2048kB"
+- "hugepages-32768kB"
+- "hugepages-1048576kB"
+
+And the corresponding cgroup files:
+- "hugetlb.64KB._____"
+- "hugetlb.2MB._____"
+- "hugetlb.32MB._____"
+- "hugetlb.1GB._____"
+
+Change-Id: If35e44e4b6846f8ed2870aedb9fed5dd3a38e91f
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/utils.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/utils.go b/libcontainer/cgroups/utils.go
+index c9411ee..5155e14 100644
+--- a/libcontainer/cgroups/utils.go
++++ b/libcontainer/cgroups/utils.go
+@@ -384,7 +384,7 @@ func RemovePaths(paths map[string]string) (err error) {
+ 
+ func GetHugePageSize() ([]string, error) {
+ 	var pageSizes []string
+-	sizeList := []string{"B", "kB", "MB", "GB", "TB", "PB"}
++	sizeList := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+ 	files, err := ioutil.ReadDir("/sys/kernel/mm/hugepages")
+ 	if err != nil {
+ 		return pageSizes, err
+-- 
+1.8.3.1
+

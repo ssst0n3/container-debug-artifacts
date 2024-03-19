@@ -1,0 +1,46 @@
+From caea676dbff1834f7c22c0ebe20a1d2c8c18b762 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Fri, 13 Dec 2019 06:50:44 +0800
+Subject: [PATCH 2/5] runc:Write freezer state after every state
+ check
+
+reason:This commit ensures we write the expected freezer cgroup state
+after every state check, in case the state check does not give the expected
+result. This can happen when a new task is created and prevents the
+whole cgroup to be FROZEN, leaving the state into FREEZING instead.
+
+This patch prevents the case of an infinite loop to happen.
+Fixes https://github.com/opencontainers/runc/issues/1609
+
+Change-Id: I8243eba847357715b13fd4e291bee9782ee50360
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/fs/freezer.go | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/freezer.go b/libcontainer/cgroups/fs/freezer.go
+index e70dfe3..5ab3c02 100644
+--- a/libcontainer/cgroups/fs/freezer.go
++++ b/libcontainer/cgroups/fs/freezer.go
+@@ -29,11 +29,14 @@ func (s *FreezerGroup) Apply(d *cgroupData) error {
+ func (s *FreezerGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 	switch cgroup.Resources.Freezer {
+ 	case configs.Frozen, configs.Thawed:
+-		if err := writeFile(path, "freezer.state", string(cgroup.Resources.Freezer)); err != nil {
+-			return err
+-		}
+-
+ 		for {
++			// In case this loop does not exit because it doesn't get the expected
++			// state, let's write again this state, hoping it's going to be properly
++			// set this time. Otherwise, this loop could run infinitely, waiting for
++			// a state change that would never happen.
++			if err := writeFile(path, "freezer.state", string(cgroup.Resources.Freezer)); err != nil {
++				return err
++			}
+ 			state, err := readFile(path, "freezer.state")
+ 			if err != nil {
+ 				return err
+-- 
+1.8.3.1
+

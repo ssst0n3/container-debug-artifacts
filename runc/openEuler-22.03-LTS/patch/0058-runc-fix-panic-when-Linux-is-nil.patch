@@ -1,0 +1,194 @@
+From 20e119ab64e02e627671957bbfa445b988cc8687 Mon Sep 17 00:00:00 2001
+From: dengguangxing <dengguangxing@huawei.com>
+Date: Wed, 16 May 2018 15:50:27 +0800
+Subject: [PATCH 58/94] runc: fix panic when Linux is nil
+
+
+[Changelog]: Linux is not always not nil.
+If Linux is nil, panic will occur.
+
+This is cherry-picked from runc upstream:
+ https://github.com/opencontainers/runc/pull/1551
+[Author]:Shukui Yang
+Conflicts:
+	libcontainer/specconv/spec_linux.go
+
+Change-Id: Ib3bf9e80852dc079ab2d42a8234297397f3c56d9
+Signed-off-by: Ma Shimiao <mashimiao.fnst@cn.fujitsu.com>
+Signed-off-by: Michael Crosby <crosbymichael@gmail.com>
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/specconv/spec_linux.go | 121 +++++++++++++++++++-----------------
+ 1 file changed, 65 insertions(+), 56 deletions(-)
+
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index b82082e..a8cf114 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -180,20 +180,6 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 	}
+ 
+ 	exists := false
+-	if config.RootPropagation, exists = mountPropagationMapping[spec.Linux.RootfsPropagation]; !exists {
+-		return nil, fmt.Errorf("rootfsPropagation=%v is not supported", spec.Linux.RootfsPropagation)
+-	}
+-
+-	for _, ns := range spec.Linux.Namespaces {
+-		t, exists := namespaceMapping[ns.Type]
+-		if !exists {
+-			return nil, fmt.Errorf("namespace %q does not exist", ns)
+-		}
+-		if config.Namespaces.Contains(t) {
+-			return nil, fmt.Errorf("malformed spec file: duplicated ns %q", ns)
+-		}
+-		config.Namespaces.Add(t, ns.Path)
+-	}
+ 	if config.Namespaces.Contains(configs.NEWNET) && config.Namespaces.PathOf(configs.NEWNET) == "" {
+ 		config.Networks = []*configs.Network{
+ 			{
+@@ -215,15 +201,35 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 		return nil, err
+ 	}
+ 	config.Cgroups = c
+-	// set extra path masking for libcontainer for the various unsafe places in proc
+-	config.MaskPaths = spec.Linux.MaskedPaths
+-	config.ReadonlyPaths = spec.Linux.ReadonlyPaths
+-	if spec.Linux.Seccomp != nil {
+-		seccomp, err := setupSeccomp(spec.Linux.Seccomp)
+-		if err != nil {
+-			return nil, err
++	// set linux-specific config
++	if spec.Linux != nil {
++		if config.RootPropagation, exists = mountPropagationMapping[spec.Linux.RootfsPropagation]; !exists {
++			return nil, fmt.Errorf("rootfsPropagation=%v is not supported", spec.Linux.RootfsPropagation)
++		}
++
++		for _, ns := range spec.Linux.Namespaces {
++			t, exists := namespaceMapping[ns.Type]
++			if !exists {
++				return nil, fmt.Errorf("namespace %q does not exist", ns)
++			}
++			if config.Namespaces.Contains(t) {
++				return nil, fmt.Errorf("malformed spec file: duplicated ns %q", ns)
++			}
++			config.Namespaces.Add(t, ns.Path)
++		}
++
++		// set extra path masking for libcontainer for the various unsafe places in proc
++		config.MaskPaths = spec.Linux.MaskedPaths
++		config.ReadonlyPaths = spec.Linux.ReadonlyPaths
++		config.MountLabel = spec.Linux.MountLabel
++		config.Sysctl = spec.Linux.Sysctl
++		if spec.Linux.Seccomp != nil {
++			seccomp, err := setupSeccomp(spec.Linux.Seccomp)
++			if err != nil {
++				return nil, err
++			}
++			config.Seccomp = seccomp
+ 		}
+-		config.Seccomp = seccomp
+ 	}
+ 	if spec.Process.SelinuxLabel != "" {
+ 		config.ProcessLabel = spec.Process.SelinuxLabel
+@@ -242,7 +248,6 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 		}
+ 	}
+ 	createHooks(spec, config)
+-	config.MountLabel = spec.Linux.MountLabel
+ 	config.Version = specs.Version
+ 	return config, nil
+ }
+@@ -565,41 +570,40 @@ func createDevices(spec *specs.Spec, config *configs.Config) error {
+ 		},
+ 	}
+ 	// merge in additional devices from the spec
+-	for _, d := range spec.Linux.Devices {
+-		var uid, gid uint32
+-		var filemode os.FileMode = 0666
++	if spec.Linux != nil {
++		for _, d := range spec.Linux.Devices {
++			var uid, gid uint32
++			var filemode os.FileMode = 0666
+ 
+-		if d.UID != nil {
+-			uid = *d.UID
+-		}
+-		if d.GID != nil {
+-			gid = *d.GID
+-		}
+-		dt, err := stringToDeviceRune(d.Type)
+-		if err != nil {
+-			return err
+-		}
+-		if d.FileMode != nil {
+-			filemode = *d.FileMode
+-		}
+-		device := &configs.Device{
+-			Type:     dt,
+-			Path:     d.Path,
+-			Major:    d.Major,
+-			Minor:    d.Minor,
+-			FileMode: filemode,
+-			Uid:      uid,
+-			Gid:      gid,
++			if d.UID != nil {
++				uid = *d.UID
++			}
++			if d.GID != nil {
++				gid = *d.GID
++			}
++			dt, err := stringToDeviceRune(d.Type)
++			if err != nil {
++				return err
++			}
++			if d.FileMode != nil {
++				filemode = *d.FileMode
++			}
++			device := &configs.Device{
++				Type:     dt,
++				Path:     d.Path,
++				Major:    d.Major,
++				Minor:    d.Minor,
++				FileMode: filemode,
++				Uid:      uid,
++				Gid:      gid,
++			}
++			config.Devices = append(config.Devices, device)
+ 		}
+-		config.Devices = append(config.Devices, device)
+ 	}
+ 	return nil
+ }
+ 
+ func setupUserNamespace(spec *specs.Spec, config *configs.Config) error {
+-	if len(spec.Linux.UIDMappings) == 0 {
+-		return nil
+-	}
+ 	create := func(m specs.LinuxIDMapping) configs.IDMap {
+ 		return configs.IDMap{
+ 			HostID:      int(m.HostID),
+@@ -607,11 +611,16 @@ func setupUserNamespace(spec *specs.Spec, config *configs.Config) error {
+ 			Size:        int(m.Size),
+ 		}
+ 	}
+-	for _, m := range spec.Linux.UIDMappings {
+-		config.UidMappings = append(config.UidMappings, create(m))
+-	}
+-	for _, m := range spec.Linux.GIDMappings {
+-		config.GidMappings = append(config.GidMappings, create(m))
++	if spec.Linux != nil {
++		if len(spec.Linux.UIDMappings) == 0 {
++			return nil
++		}
++		for _, m := range spec.Linux.UIDMappings {
++			config.UidMappings = append(config.UidMappings, create(m))
++		}
++		for _, m := range spec.Linux.GIDMappings {
++			config.GidMappings = append(config.GidMappings, create(m))
++		}
+ 	}
+ 	rootUID, err := config.HostRootUID()
+ 	if err != nil {
+-- 
+2.7.4.3
+

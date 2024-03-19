@@ -1,0 +1,92 @@
+From 4b8a7b69792c22c1ee3abf3bee88af3590b144cb Mon Sep 17 00:00:00 2001
+From: lujingxiao <lujingxiao@huawei.com>
+Date: Thu, 8 Nov 2018 11:14:01 +0800
+Subject: [PATCH 69/94] runc: Change Files to LinuxFiles for
+ --file-limit
+
+reason: after runc-1.0.0.rc3, struct Files should be renamed
+to LinuxFiles.
+
+--file-limit related commits:
+- 0c540de runc: change read value of cgroup files.limit into string
+- fb2de87 runc: Modify max files.limit to max because of the
+change of kernel.
+- 5fc9474 Add file fds limit
+all are already merged.
+
+Change-Id: Ida75dd6a7ccd225f6ac851bf4a28ef77d5a3944f
+Signed-off-by: lujingxiao <lujingxiao@huawei.com>
+---
+ libcontainer/specconv/spec_linux.go                            |  4 ++--
+ script/runc-euleros.spec                                       |  2 +-
+ vendor/github.com/opencontainers/runtime-spec/Checklist        |  1 +
+ .../github.com/opencontainers/runtime-spec/specs-go/config.go  | 10 +++++-----
+ 4 files changed, 9 insertions(+), 8 deletions(-)
+ create mode 100644 vendor/github.com/opencontainers/runtime-spec/Checklist
+
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index a8cf114..8ef9574 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -408,8 +408,8 @@ func createCgroupConfig(opts *CreateOpts) (*configs.Cgroup, error) {
+ 	if r.Pids != nil {
+ 		c.Resources.PidsLimit = r.Pids.Limit
+ 	}
+-	if r.Files != nil && r.Files.Limit != nil {
+-		c.Resources.FilesLimit = *r.Files.Limit
++	if r.Files != nil {
++		c.Resources.FilesLimit = r.Files.Limit
+ 	}
+ 	if r.BlockIO != nil {
+ 		if r.BlockIO.Weight != nil {
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 025b621..19cdc42 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 8%{?dist}
++Release: 9%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+diff --git a/vendor/github.com/opencontainers/runtime-spec/Checklist b/vendor/github.com/opencontainers/runtime-spec/Checklist
+new file mode 100644
+index 0000000..be85bc8
+--- /dev/null
++++ b/vendor/github.com/opencontainers/runtime-spec/Checklist
+@@ -0,0 +1 @@
++Add struct LinuxFiles to vendor/src/github.com/opencontainers/runtime-spec/specs-go/config.go for supporting --files-limit
+diff --git a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+index 603ecf4..fe3c5b6 100644
+--- a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
++++ b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+@@ -318,10 +318,10 @@ type LinuxPids struct {
+ 	Limit int64 `json:"limit"`
+ }
+ 
+-// Files for Linux cgroup 'files' resource management (https://lwn.net/Articles/604129/)
+-type Files struct {
+-	// Maximum number of open files".
+-	Limit *int64 `json:"limit,omitempty"`
++// LinuxFiles for Linux cgroup 'files' resource management (https://lwn.net/Articles/604129/)
++type LinuxFiles struct {
++	// Maximum number of open files. Default is "no limit".
++	Limit int64 `json:"limit,omitempty"`
+ }
+ 
+ // LinuxNetwork identification and priority configuration
+@@ -347,7 +347,7 @@ type LinuxResources struct {
+ 	// Task resource restriction configuration.
+ 	Pids *LinuxPids `json:"pids,omitempty"`
+ 	// Files resource restriction configuration.
+-	Files *Files `json:"files,omitempty"`
++	Files *LinuxFiles `json:"files,omitempty"`
+ 	// BlockIO restriction configuration
+ 	BlockIO *LinuxBlockIO `json:"blockIO,omitempty"`
+ 	// Hugetlb limit (in bytes)
+-- 
+2.7.4.3
+

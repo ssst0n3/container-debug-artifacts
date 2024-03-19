@@ -1,0 +1,78 @@
+From 7e71d4334b3d86deaec67474041ee949672d267b Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Tue, 22 Aug 2023 17:38:24 +0800
+Subject: [PATCH] runc:delete invalid cgroupinfo logs
+
+---
+ libcontainer/container_linux.go     |  1 -
+ libcontainer/standard_init_linux.go | 28 ----------------------------
+ 2 files changed, 29 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 113dbf4..d678407 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -322,7 +322,6 @@ func (c *linuxContainer) start(process *Process) error {
+ 	}
+ 
+ 	if err := parent.start(); err != nil {
+-		printCgroupInfo(c.config.Cgroups.Path)
+ 		// terminate the process to ensure that it properly is reaped.
+ 		if err := parent.terminate(); err != nil {
+ 			logrus.Warnf("parent process terminate error: %v", err)
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index b4945c3..611b91d 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -4,15 +4,12 @@ package libcontainer
+ 
+ import (
+ 	"fmt"
+-	"io/ioutil"
+ 	"os"
+ 	"os/exec"
+-	"path/filepath"
+ 	"strings"
+ 	"syscall"
+ 	"time"
+ 
+-	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+@@ -220,32 +217,7 @@ func (l *linuxStandardInit) Init() error {
+ 	// https://github.com/torvalds/linux/blob/v4.9/fs/exec.c#L1290-L1318
+ 	syscall.Close(l.stateDirFD)
+ 	if err := syscall.Exec(name, l.config.Args[0:], os.Environ()); err != nil {
+-		printCgroupInfo("")
+ 		return newSystemErrorWithCause(err, "exec user process")
+ 	}
+ 	return nil
+ }
+-
+-func printCgroupInfo(path string) {
+-	cgroupRoot := "/sys/fs/cgroup"
+-	infoFileList := []string{
+-		"/proc/meminfo",
+-		"/sys/fs/cgroup/memory/memory.stat",
+-		filepath.Join(cgroupRoot, "files", path, "files.limit"),
+-		filepath.Join(cgroupRoot, "files", path, "files.usage"),
+-		filepath.Join(cgroupRoot, "pids", path, "pids.max"),
+-		filepath.Join(cgroupRoot, "pids", path, "pids.current"),
+-		filepath.Join(cgroupRoot, "memory", path, "memory.usage_in_bytes"),
+-		filepath.Join(cgroupRoot, "memory", path, "memory.limit_in_bytes"),
+-		filepath.Join(cgroupRoot, "memory", path, "memory.stat"),
+-		filepath.Join(cgroupRoot, "cpu", path, "cpu.stat"),
+-	}
+-	for _, file := range infoFileList {
+-		printFileContent(file)
+-	}
+-}
+-
+-func printFileContent(path string) {
+-	output, err := ioutil.ReadFile(path)
+-	logrus.Infof("content read from %s: %s, err: %v", path, string(output), err)
+-}
+-- 
+2.33.0
+

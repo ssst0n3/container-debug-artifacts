@@ -1,0 +1,21 @@
+From 21f915e95f260af0f716f0ffcea0362d6b38f665 Mon Sep 17 00:00:00 2001
+From: Wenlong Zhang <zhangwenlong@loongson.cn>
+Date: Wed, 9 Nov 2022 10:58:21 +0800
+Subject: [PATCH] add loongarch support for libcontainer
+
+---
+ libcontainer/system/syscall_linux_64.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/system/syscall_linux_64.go b/libcontainer/system/syscall_linux_64.go
+index 6e89196..77d011b 100644
+--- a/libcontainer/system/syscall_linux_64.go
++++ b/libcontainer/system/syscall_linux_64.go
+@@ -1,4 +1,4 @@
+-// +build linux,arm64 linux,amd64 linux,ppc linux,ppc64 linux,ppc64le linux,s390x linux,riscv64
++// +build linux,arm64 linux,amd64 linux,ppc linux,ppc64 linux,ppc64le linux,s390x linux,riscv64 linux,loong64
+ 
+ package system
+ 
+-- 
+2.33.0

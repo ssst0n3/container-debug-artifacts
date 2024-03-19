@@ -1,0 +1,36 @@
+From aff0fc10d4e651b722b40950c794435c55a33034 Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Mon, 5 Feb 2024 17:24:25 +0800
+Subject: [PATCH] runc:check cmd exist
+
+---
+ libcontainer/setns_init_linux.go | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/libcontainer/setns_init_linux.go b/libcontainer/setns_init_linux.go
+index e38165d..74a91a6 100644
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -6,6 +6,7 @@ package libcontainer
+ import (
+ 	"fmt"
+ 	"os"
++	"os/exec"
+ 	"syscall"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+@@ -64,6 +65,11 @@ func (l *linuxSetnsInit) Init() error {
+ 	if err := finalizeNamespace(l.config); err != nil {
+ 		return err
+ 	}
++	// Check for the arg early to make sure it exists.
++	_, err := exec.LookPath(l.config.Args[0])
++	if err != nil {
++		return err
++	}
+ 	if err := apparmor.ApplyProfile(l.config.AppArmorProfile); err != nil {
+ 		return err
+ 	}
+-- 
+2.33.0
+

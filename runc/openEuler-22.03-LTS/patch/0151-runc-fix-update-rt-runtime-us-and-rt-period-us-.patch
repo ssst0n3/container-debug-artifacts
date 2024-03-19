@@ -1,0 +1,48 @@
+From b8980e0d96ccf21bdda4254f4151097b2815269e Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Tue, 24 Oct 2023 16:51:22 +0800
+Subject: [PATCH] runc:runc:fix update rt-runtime-us and rt-period-us failed
+
+---
+ libcontainer/cgroups/fs/cpu.go | 20 +++++++++++++++-----
+ 1 file changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/cpu.go b/libcontainer/cgroups/fs/cpu.go
+index b712bd0..5176719 100644
+--- a/libcontainer/cgroups/fs/cpu.go
++++ b/libcontainer/cgroups/fs/cpu.go
+@@ -54,16 +54,26 @@ func (s *CpuGroup) ApplyDir(path string, cgroup *configs.Cgroup, pid int) error
+ }
+ 
+ func (s *CpuGroup) SetRtSched(path string, cgroup *configs.Cgroup) error {
+-	if cgroup.Resources.CpuRtPeriod != 0 {
+-		if err := writeFile(path, "cpu.rt_period_us", strconv.FormatUint(cgroup.Resources.CpuRtPeriod, 10)); err != nil {
+-			return err
++	var err error
++	if cgroup.Resources.CpuRtRuntime != 0 {
++		if err = writeFile(path, "cpu.rt_runtime_us", strconv.FormatInt(cgroup.Resources.CpuRtRuntime, 10)); err != nil {
++			if cgroup.Resources.CpuRtPeriod != 0 {
++				if err = writeFile(path, "cpu.rt_period_us", strconv.FormatUint(cgroup.Resources.CpuRtPeriod, 10)); err != nil {
++					return err
++				}
++			}
++			if err = writeFile(path, "cpu.rt_runtime_us", strconv.FormatInt(cgroup.Resources.CpuRtRuntime, 10)); err != nil {
++				return err
++			}
++			return nil
+ 		}
+ 	}
+-	if cgroup.Resources.CpuRtRuntime != 0 {
+-		if err := writeFile(path, "cpu.rt_runtime_us", strconv.FormatInt(cgroup.Resources.CpuRtRuntime, 10)); err != nil {
++	if cgroup.Resources.CpuRtPeriod != 0 {
++		if err = writeFile(path, "cpu.rt_period_us", strconv.FormatUint(cgroup.Resources.CpuRtPeriod, 10)); err != nil {
+ 			return err
+ 		}
+ 	}
++
+ 	return nil
+ }
+ 
+-- 
+2.33.0
+

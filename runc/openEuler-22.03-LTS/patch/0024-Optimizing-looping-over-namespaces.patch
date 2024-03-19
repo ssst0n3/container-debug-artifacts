@@ -1,0 +1,58 @@
+From 6108649ff1f4f270bfeb5f2aec1de8917d9b7609 Mon Sep 17 00:00:00 2001
+From: Harshal Patil <harshal.patil@in.ibm.com>
+Date: Tue, 25 Apr 2017 15:56:40 +0530
+Subject: [PATCH 24/94] Optimizing looping over namespaces
+
+Change-Id: I82612d1f8161b4656011ba45b619dcd9150a3c2f
+Signed-off-by: Harshal Patil <harshal.patil@in.ibm.com>
+---
+ libcontainer/container_linux.go | 21 +++++++++++----------
+ 1 file changed, 11 insertions(+), 10 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index b5563d6..aeaf583 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1454,18 +1454,17 @@ func (c *linuxContainer) orderNamespacePaths(namespaces map[configs.NamespaceTyp
+ 		configs.NEWNS,
+ 	}
+ 
+-	// Remove namespaces that we don't need to join.
+-	var nsTypes []configs.NamespaceType
+ 	for _, ns := range order {
+-		if c.config.Namespaces.Contains(ns) {
+-			nsTypes = append(nsTypes, ns)
++
++		// Remove namespaces that we don't need to join.
++		if !c.config.Namespaces.Contains(ns) {
++			continue
+ 		}
+-	}
+-	for _, nsType := range nsTypes {
+-		if p, ok := namespaces[nsType]; ok && p != "" {
++
++		if p, ok := namespaces[ns]; ok && p != "" {
+ 			// check if the requested namespace is supported
+-			if !configs.IsNamespaceSupported(nsType) {
+-				return nil, newSystemError(fmt.Errorf("namespace %s is not supported", nsType))
++			if !configs.IsNamespaceSupported(ns) {
++				return nil, newSystemError(fmt.Errorf("namespace %s is not supported", ns))
+ 			}
+ 			// only set to join this namespace if it exists
+ 			if _, err := os.Lstat(p); err != nil {
+@@ -1476,9 +1475,11 @@ func (c *linuxContainer) orderNamespacePaths(namespaces map[configs.NamespaceTyp
+ 			if strings.ContainsRune(p, ',') {
+ 				return nil, newSystemError(fmt.Errorf("invalid path %s", p))
+ 			}
+-			paths = append(paths, fmt.Sprintf("%s:%s", configs.NsName(nsType), p))
++			paths = append(paths, fmt.Sprintf("%s:%s", configs.NsName(ns), p))
+ 		}
++
+ 	}
++
+ 	return paths, nil
+ }
+ 
+-- 
+2.7.4.3
+

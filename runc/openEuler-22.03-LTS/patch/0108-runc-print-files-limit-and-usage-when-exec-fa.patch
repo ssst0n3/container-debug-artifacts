@@ -1,0 +1,55 @@
+From e0628b7349150e8774a91d495f1203e601450aa9 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Tue, 20 Aug 2019 09:10:09 +0800
+Subject: [PATCH] runc:  print files limit and usage when exec failed
+
+reason: print files limit and usage when exec failed
+
+Change-Id: Id5a910f360345b70c29152133991807c233c9872
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/container_linux.go     |  1 +
+ libcontainer/standard_init_linux.go | 11 +++++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 914da7f..3ee7d5f 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -310,6 +310,7 @@ func (c *linuxContainer) start(process *Process) error {
+ 		return newSystemErrorWithCause(err, "creating new parent process")
+ 	}
+ 	if err := parent.start(); err != nil {
++		printFilesInfo(c.id)
+ 		// terminate the process to ensure that it properly is reaped.
+ 		if err := parent.terminate(); err != nil {
+ 			logrus.Warn(err)
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index b25669f..ac6b3bf 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -215,6 +215,7 @@ func (l *linuxStandardInit) Init() error {
+ 	syscall.Close(l.stateDirFD)
+ 	if err := syscall.Exec(name, l.config.Args[0:], os.Environ()); err != nil {
+ 		printMemoryInfo()
++		printFilesInfo("")
+ 		return newSystemErrorWithCause(err, "exec user process")
+ 	}
+ 	return nil
+@@ -235,3 +236,13 @@ func printMemoryInfo() {
+ 		logrus.Infof("print memory info (cgroup memory.stat): %s", string(output))
+ 	}
+ }
++
++func printFilesInfo(id string) {
++	if id != "" {
++		id = "docker/" + id + "/"
++	}
++	output, err := ioutil.ReadFile("/sys/fs/cgroup/files/" + id + "files.limit")
++	logrus.Errorf("cgroup files.limit: %s, err: %v", string(output), err)
++	output, err = ioutil.ReadFile("/sys/fs/cgroup/files/" + id + "files.usage")
++	logrus.Errorf("cgroup files.usage: %s, err: %v", string(output), err)
++}
+-- 
+1.8.3.1
+

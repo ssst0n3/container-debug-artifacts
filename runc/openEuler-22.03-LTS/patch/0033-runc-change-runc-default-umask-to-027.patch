@@ -1,0 +1,52 @@
+From 49ff7be84939cf93b8bf4861ddc783704fb3f50b Mon Sep 17 00:00:00 2001
+From: dengguangxing <dengguangxing@huawei.com>
+Date: Mon, 8 Jan 2018 10:35:34 +0800
+Subject: [PATCH 33/94] runc: change runc default umask to 027
+
+[Changelog]:change runc default umask to 027
+change exec process default umask to 0027
+
+Change-Id: Ia7ff0216adc17d61586954de83031be21ab88338
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/rootfs_linux.go     | 2 +-
+ libcontainer/setns_init_linux.go | 3 +++
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index d507373..1c93903 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -136,7 +136,7 @@ func finalizeRootfs(config *configs.Config) (err error) {
+ 		}
+ 	}
+ 
+-	syscall.Umask(0022)
++	syscall.Umask(0027)
+ 	return nil
+ }
+ 
+diff --git a/libcontainer/setns_init_linux.go b/libcontainer/setns_init_linux.go
+index 48cc0ae..e8e969a 100644
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -5,6 +5,7 @@ package libcontainer
+ import (
+ 	"fmt"
+ 	"os"
++	"syscall"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+@@ -40,6 +41,8 @@ func (l *linuxSetnsInit) Init() error {
+ 			return err
+ 		}
+ 	}
++	// set exec process umask to 0027 according to secure policy
++	syscall.Umask(0027)
+ 	if l.config.NoNewPrivileges {
+ 		if err := system.Prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
+ 			return err
+-- 
+2.7.4.3
+

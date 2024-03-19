@@ -1,0 +1,32 @@
+From a90e91c5fc8e6fb016d26666361e6d1bfd3f56c8 Mon Sep 17 00:00:00 2001
+From: Michael Crosby <crosbymichael@gmail.com>
+Date: Fri, 14 Apr 2017 10:15:33 -0700
+Subject: [PATCH 19/94] Revert back to using /sbin
+
+This was changed in
+https://github.com/opencontainers/runc/commit/d2f49696#diff-b67911656ef5d18c4ae36cb6741b7965R7
+and is causing install problems for people building runc and having it
+installed in /bin and /sbin.
+
+Change-Id: Ibaef1dd279894342c48da5e6e8e7f1a7212003b8
+Signed-off-by: Michael Crosby <crosbymichael@gmail.com>
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 1cecca1..d6d337d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -4,7 +4,7 @@
+ 
+ SOURCES := $(shell find . 2>&1 | grep -E '.*\.(c|h|go)$$')
+ PREFIX := $(DESTDIR)/usr/local
+-BINDIR := $(PREFIX)/bin
++BINDIR := $(PREFIX)/sbin
+ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+ GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
+ RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
+-- 
+2.7.4.3
+

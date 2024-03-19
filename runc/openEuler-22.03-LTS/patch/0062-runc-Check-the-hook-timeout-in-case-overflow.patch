@@ -1,0 +1,47 @@
+From ccd2660d85f36695032ed075f8f669ccad17bfc3 Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Tue, 23 Oct 2018 16:43:20 +0800
+Subject: [PATCH 62/94] runc: Check the hook timeout in case overflow
+
+reason:the hook timeout is meaningless when more than 120s
+
+Change-Id: Ibabf059bd9ba5e68b10189ae4e813d47dcec7ec5
+---
+ libcontainer/configs/config.go | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index d6bc603..9049924 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -14,6 +14,7 @@ import (
+ const (
+ 	minHookTimeOut     = 1 * time.Second
+ 	defaultHookTimeOut = 5 * time.Second
++	maxHookTimeOut     = 120 * time.Second
+ 	//the runc default timeout is 120s, so set the defaultWarnTime to 80% of the default timeout.
+ 	defaultWarnTime = 96 * time.Second
+ )
+@@ -355,6 +356,10 @@ func (c Command) Run(s HookState) error {
+ 	if c.Timeout != nil && *c.Timeout < minHookTimeOut {
+ 		*c.Timeout = defaultHookTimeOut
+ 	}
++	if c.Timeout != nil && *c.Timeout > maxHookTimeOut {
++		logrus.Warnf("hook timeout: %s is too long, ContainerID: %s", *c.Timeout, s.ID)
++		*c.Timeout = maxHookTimeOut
++	}
+ 	errC := make(chan error, 1)
+ 	var (
+ 		timerCh  <-chan time.Time
+@@ -382,7 +387,7 @@ func (c Command) Run(s HookState) error {
+ 		timer := time.NewTimer(*c.Timeout)
+ 		defer timer.Stop()
+ 		timerCh = timer.C
+-		warnTime = float64(*c.Timeout) * 0.8
++		warnTime = (*c.Timeout).Seconds() * 0.8
+ 	}
+ 	for {
+ 		select {
+-- 
+2.7.4.3
+

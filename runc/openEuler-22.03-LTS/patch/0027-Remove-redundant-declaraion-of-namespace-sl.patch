@@ -1,0 +1,59 @@
+From e35db3fff6d86c31ca0203ef02ffa1cf2b05bf89 Mon Sep 17 00:00:00 2001
+From: Harshal Patil <harshal.patil@in.ibm.com>
+Date: Fri, 28 Apr 2017 10:12:56 +0530
+Subject: [PATCH 27/94] Remove redundant declaraion of namespace
+ slice
+
+Change-Id: I7e7e45cec65264a91ef3dec804953a1285b23b96
+Signed-off-by: Harshal Patil <harshal.patil@in.ibm.com>
+---
+ libcontainer/configs/namespaces_unix.go |  6 +++---
+ libcontainer/container_linux.go         | 11 +----------
+ 2 files changed, 4 insertions(+), 13 deletions(-)
+
+diff --git a/libcontainer/configs/namespaces_unix.go b/libcontainer/configs/namespaces_unix.go
+index 8beba9d..1f0b3ee 100644
+--- a/libcontainer/configs/namespaces_unix.go
++++ b/libcontainer/configs/namespaces_unix.go
+@@ -64,12 +64,12 @@ func IsNamespaceSupported(ns NamespaceType) bool {
+ 
+ func NamespaceTypes() []NamespaceType {
+ 	return []NamespaceType{
++		NEWUSER, // Keep user NS always first, don't move it.
++		NEWIPC,
++		NEWUTS,
+ 		NEWNET,
+ 		NEWPID,
+ 		NEWNS,
+-		NEWUTS,
+-		NEWIPC,
+-		NEWUSER,
+ 	}
+ }
+ 
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index aeaf583..173a3f0 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1444,17 +1444,8 @@ func (c *linuxContainer) currentState() (*State, error) {
+ // can setns in order.
+ func (c *linuxContainer) orderNamespacePaths(namespaces map[configs.NamespaceType]string) ([]string, error) {
+ 	paths := []string{}
+-	order := []configs.NamespaceType{
+-		// The user namespace *must* be done first.
+-		configs.NEWUSER,
+-		configs.NEWIPC,
+-		configs.NEWUTS,
+-		configs.NEWNET,
+-		configs.NEWPID,
+-		configs.NEWNS,
+-	}
+ 
+-	for _, ns := range order {
++	for _, ns := range configs.NamespaceTypes() {
+ 
+ 		// Remove namespaces that we don't need to join.
+ 		if !c.config.Namespaces.Contains(ns) {
+-- 
+2.7.4.3
+

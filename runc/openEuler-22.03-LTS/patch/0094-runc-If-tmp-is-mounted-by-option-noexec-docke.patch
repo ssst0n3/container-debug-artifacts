@@ -1,0 +1,30 @@
+From 662893f67295028a128885544d4a0ee25491da95 Mon Sep 17 00:00:00 2001
+From: wangfengtu <wangfengtu@huawei.com>
+Date: Sat, 2 Mar 2019 19:51:08 +0800
+Subject: [PATCH 94/94] runc:  If /tmp is mounted by option
+ noexec,docker run will fail
+
+reason: Change /tmp to /run for storage temporary runc
+
+Change-Id: Ia442b489dc1b57c6e4fd720b98b5061f83a88214
+Signed-off-by: wangfengtu <wangfengtu@huawei.com>
+---
+ libcontainer/nsenter/cloned_binary.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/nsenter/cloned_binary.c b/libcontainer/nsenter/cloned_binary.c
+index ff7ecb0..8e8b70e 100644
+--- a/libcontainer/nsenter/cloned_binary.c
++++ b/libcontainer/nsenter/cloned_binary.c
+@@ -230,7 +230,7 @@ static int clone_binary(void)
+ {
+ 	int binfd, memfd;
+ 	ssize_t sent = 0;
+-	char template[] = "/tmp/runc.XXXXXX";
++	char template[] = "/run/runc.XXXXXX";
+ 	int type = 0;
+ 	char *tmpfile = NULL;
+ 
+-- 
+2.7.4.3
+

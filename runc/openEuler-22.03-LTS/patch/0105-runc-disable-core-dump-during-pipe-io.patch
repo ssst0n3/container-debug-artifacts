@@ -1,0 +1,35 @@
+From a912d31830ec000bc97d400784ea4a9165b0bd84 Mon Sep 17 00:00:00 2001
+From: jingrui <jingrui@huawei.com>
+Date: Mon, 8 Jul 2019 19:49:24 +0800
+Subject: [PATCH] docker:  disable core dump during exec
+
+Change-Id: If649738854616c1f448a148aef1f2cc414715616
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ libcontainer/process_linux.go | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 4a7321c5..7a3da4fd 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -17,6 +17,7 @@ import (
+ 	"path/filepath"
+ 	"strconv"
+ 	"syscall"
++	"golang.org/x/sys/unix"
+ )
+ 
+ type parentProcess interface {
+@@ -66,6 +67,8 @@ func (p *setnsProcess) signal(sig os.Signal) error {
+ }
+ 
+ func (p *setnsProcess) start() (err error) {
++	unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0)
++	defer unix.Prctl(unix.PR_SET_DUMPABLE, 1, 0, 0, 0)
+ 	defer p.parentPipe.Close()
+ 	err = p.cmd.Start()
+ 	p.childPipe.Close()
+-- 
+2.17.1
+

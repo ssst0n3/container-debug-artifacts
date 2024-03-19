@@ -1,0 +1,27 @@
+From c0ff47aba74ea06836ee53f7077c7930e378820c Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Thu, 15 Dec 2022 15:30:23 +0800
+Subject: [PATCH] runc:Make sure signalAllProcesses is invoked in the function
+ of destroy when container shares pid namespace
+
+---
+ libcontainer/state_linux.go | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/state_linux.go b/libcontainer/state_linux.go
+index b570a24..c77d4f2 100644
+--- a/libcontainer/state_linux.go
++++ b/libcontainer/state_linux.go
+@@ -38,7 +38,8 @@ type containerState interface {
+ }
+ 
+ func destroy(c *linuxContainer) error {
+-	if !c.config.Namespaces.Contains(configs.NEWPID) {
++	if !c.config.Namespaces.Contains(configs.NEWPID) ||
++		c.config.Namespaces.PathOf(configs.NEWPID) != "" {
+ 		if err := signalAllProcesses(c.cgroupManager, syscall.SIGKILL); err != nil {
+ 			logrus.Warn(err)
+ 		}
+-- 
+2.30.0
+

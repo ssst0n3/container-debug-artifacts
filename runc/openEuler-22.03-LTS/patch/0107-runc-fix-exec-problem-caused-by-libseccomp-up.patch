@@ -1,0 +1,41 @@
+From 60153d0c986ed01350a74fb93b39836b59e8f26e Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Tue, 20 Aug 2019 02:40:45 +0800
+Subject: [PATCH] runc: fix exec problem caused by libseccomp updating
+
+reason: libseccomp updating causes runc exec performance
+degradation, which causes container health check failed and container
+is killed. So we add an environmental variable to skip this unnecessary
+seccomp step.
+
+related test data:
+before fixing, exec "runc exec" 20 times,
+start time: 1566210117.193673318  end time: 1566210125.493181368
+takes about 8s
+after fixing, exec "runc exec" 20 times,
+start time: 1566210059.708669785  end time: 1566210060.879416932
+takes about 1s
+
+Change-Id: I751ac8354394bd15a420ad8410b12ef3f75622a1
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/seccomp/seccomp_linux.go | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/libcontainer/seccomp/seccomp_linux.go b/libcontainer/seccomp/seccomp_linux.go
+index db4bb4e..0c97da6 100644
+--- a/libcontainer/seccomp/seccomp_linux.go
++++ b/libcontainer/seccomp/seccomp_linux.go
+@@ -29,6 +29,9 @@ var (
+ // Setns calls, however, require a separate invocation, as they are not children
+ // of the init until they join the namespace
+ func InitSeccomp(config *configs.Seccomp) error {
++	os.Setenv("LIBSECCOMP_TRANSACTION_DISABLE", "1")
++	defer os.Unsetenv("LIBSECCOMP_TRANSACTION_DISABLE")
++
+ 	if config == nil {
+ 		return fmt.Errorf("cannot initialize Seccomp - nil config passed")
+ 	}
+-- 
+1.8.3.1
+

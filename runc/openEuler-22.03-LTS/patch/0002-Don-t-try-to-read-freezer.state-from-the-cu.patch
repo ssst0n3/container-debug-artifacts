@@ -1,0 +1,43 @@
+From 4ccbadc228c9e4fc0fd20690ca13517f02aab59d Mon Sep 17 00:00:00 2001
+From: Andrei Vagin <avagin@virtuozzo.com>
+Date: Thu, 23 Mar 2017 01:43:39 +0300
+Subject: [PATCH 02/94] Don't try to read freezer.state from the
+ current directory
+
+If we try to pause a container on the system without freezer cgroups,
+we can found that runc tries to open ./freezer.state. It is obviously wrong.
+
+$ ./runc pause test
+no such directory for freezer.state
+
+$ echo FROZEN > freezer.state
+$ ./runc pause test
+container not running or created: paused
+
+Change-Id: Ia7eba3a300a7ca6f1e8e10e4b1cbb4360e083e33
+Signed-off-by: Andrei Vagin <avagin@virtuozzo.com>
+---
+ libcontainer/container_linux.go | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 28dff86..cd9235d 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1284,7 +1284,12 @@ func (c *linuxContainer) runType() (Status, error) {
+ }
+ 
+ func (c *linuxContainer) isPaused() (bool, error) {
+-	data, err := ioutil.ReadFile(filepath.Join(c.cgroupManager.GetPaths()["freezer"], "freezer.state"))
++	fcg := c.cgroupManager.GetPaths()["freezer"]
++	if fcg == "" {
++		// A container doesn't have a freezer cgroup
++		return false, nil
++	}
++	data, err := ioutil.ReadFile(filepath.Join(fcg, "freezer.state"))
+ 	if err != nil {
+ 		// If freezer cgroup is not mounted, the container would just be not paused.
+ 		if os.IsNotExist(err) {
+-- 
+2.7.4.3
+

@@ -1,0 +1,421 @@
+From 6c69b3f5c8eb23eb47917371b4ae69a76912ec83 Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Tue, 26 Apr 2016 02:19:39 +1000
+Subject: [PATCH 06/94] rootless: add rootless cgroup manager
+
+The rootless cgroup manager acts as a noop for all set and apply
+operations. It is just used for rootless setups. Currently this is far
+too simple (we need to add opportunistic cgroup management), but is good
+enough as a first-pass at a noop cgroup manager.
+
+Change-Id: Iae5668680e5e2896246792fe6f2ac1bb37eab1d5
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ libcontainer/cgroups/fs/apply_raw.go          |  24 +----
+ libcontainer/cgroups/rootless/rootless.go     | 128 ++++++++++++++++++++++++++
+ libcontainer/cgroups/systemd/apply_systemd.go |   2 +-
+ libcontainer/cgroups/utils.go                 |  41 ++++++++-
+ libcontainer/container_linux.go               |   8 ++
+ libcontainer/factory_linux.go                 |  22 +++++
+ libcontainer/process_linux.go                 |  20 ++--
+ libcontainer/rootfs_linux.go                  |   2 +-
+ 8 files changed, 210 insertions(+), 37 deletions(-)
+ create mode 100644 libcontainer/cgroups/rootless/rootless.go
+
+diff --git a/libcontainer/cgroups/fs/apply_raw.go b/libcontainer/cgroups/fs/apply_raw.go
+index d316313..22d82ac 100644
+--- a/libcontainer/cgroups/fs/apply_raw.go
++++ b/libcontainer/cgroups/fs/apply_raw.go
+@@ -267,25 +267,8 @@ func getCgroupData(c *configs.Cgroup, pid int) (*cgroupData, error) {
+ 	}, nil
+ }
+ 
+-func (raw *cgroupData) parentPath(subsystem, mountpoint, root string) (string, error) {
+-	// Use GetThisCgroupDir instead of GetInitCgroupDir, because the creating
+-	// process could in container and shared pid namespace with host, and
+-	// /proc/1/cgroup could point to whole other world of cgroups.
+-	initPath, err := cgroups.GetThisCgroupDir(subsystem)
+-	if err != nil {
+-		return "", err
+-	}
+-	// This is needed for nested containers, because in /proc/self/cgroup we
+-	// see pathes from host, which don't exist in container.
+-	relDir, err := filepath.Rel(root, initPath)
+-	if err != nil {
+-		return "", err
+-	}
+-	return filepath.Join(mountpoint, relDir), nil
+-}
+-
+ func (raw *cgroupData) path(subsystem string) (string, error) {
+-	mnt, root, err := cgroups.FindCgroupMountpointAndRoot(subsystem)
++	mnt, err := cgroups.FindCgroupMountpoint(subsystem)
+ 	// If we didn't mount the subsystem, there is no point we make the path.
+ 	if err != nil {
+ 		return "", err
+@@ -297,7 +280,10 @@ func (raw *cgroupData) path(subsystem string) (string, error) {
+ 		return filepath.Join(raw.root, filepath.Base(mnt), raw.innerPath), nil
+ 	}
+ 
+-	parentPath, err := raw.parentPath(subsystem, mnt, root)
++	// Use GetOwnCgroupPath instead of GetInitCgroupPath, because the creating
++	// process could in container and shared pid namespace with host, and
++	// /proc/1/cgroup could point to whole other world of cgroups.
++	parentPath, err := cgroups.GetOwnCgroupPath(subsystem)
+ 	if err != nil {
+ 		return "", err
+ 	}
+diff --git a/libcontainer/cgroups/rootless/rootless.go b/libcontainer/cgroups/rootless/rootless.go
+new file mode 100644
+index 0000000..b1efbfd
+--- /dev/null
++++ b/libcontainer/cgroups/rootless/rootless.go
+@@ -0,0 +1,128 @@
++// +build linux
++
++package rootless
++
++import (
++	"fmt"
++
++	"github.com/opencontainers/runc/libcontainer/cgroups"
++	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/configs/validate"
++)
++
++// TODO: This is copied from libcontainer/cgroups/fs, which duplicates this code
++//       needlessly. We should probably export this list.
++
++var subsystems = []subsystem{
++	&fs.CpusetGroup{},
++	&fs.DevicesGroup{},
++	&fs.MemoryGroup{},
++	&fs.CpuGroup{},
++	&fs.CpuacctGroup{},
++	&fs.PidsGroup{},
++	&fs.BlkioGroup{},
++	&fs.HugetlbGroup{},
++	&fs.NetClsGroup{},
++	&fs.NetPrioGroup{},
++	&fs.PerfEventGroup{},
++	&fs.FreezerGroup{},
++	&fs.NameGroup{GroupName: "name=systemd"},
++}
++
++type subsystem interface {
++	// Name returns the name of the subsystem.
++	Name() string
++
++	// Returns the stats, as 'stats', corresponding to the cgroup under 'path'.
++	GetStats(path string, stats *cgroups.Stats) error
++}
++
++// The noop cgroup manager is used for rootless containers, because we currently
++// cannot manage cgroups if we are in a rootless setup. This manager is chosen
++// by factory if we are in rootless mode. We error out if any cgroup options are
++// set in the config -- this may change in the future with upcoming kernel features
++// like the cgroup namespace.
++
++type Manager struct {
++	Cgroups *configs.Cgroup
++	Paths   map[string]string
++}
++
++func (m *Manager) Apply(pid int) error {
++	// If there are no cgroup settings, there's nothing to do.
++	if m.Cgroups == nil {
++		return nil
++	}
++
++	// We can't set paths.
++	// TODO(cyphar): Implement the case where the runner of a rootless container
++	//               owns their own cgroup, which would allow us to set up a
++	//               cgroup for each path.
++	if m.Cgroups.Paths != nil {
++		return fmt.Errorf("cannot change cgroup path in rootless container")
++	}
++
++	// We load the paths into the manager.
++	paths := make(map[string]string)
++	for _, sys := range subsystems {
++		name := sys.Name()
++
++		path, err := cgroups.GetOwnCgroupPath(name)
++		if err != nil {
++			// Ignore paths we couldn't resolve.
++			continue
++		}
++
++		paths[name] = path
++	}
++
++	m.Paths = paths
++	return nil
++}
++
++func (m *Manager) GetPaths() map[string]string {
++	return m.Paths
++}
++
++func (m *Manager) Set(container *configs.Config) error {
++	// We have to re-do the validation here, since someone might decide to
++	// update a rootless container.
++	return validate.New().Validate(container)
++}
++
++func (m *Manager) GetPids() ([]int, error) {
++	dir, err := cgroups.GetOwnCgroupPath("devices")
++	if err != nil {
++		return nil, err
++	}
++	return cgroups.GetPids(dir)
++}
++
++func (m *Manager) GetAllPids() ([]int, error) {
++	dir, err := cgroups.GetOwnCgroupPath("devices")
++	if err != nil {
++		return nil, err
++	}
++	return cgroups.GetAllPids(dir)
++}
++
++func (m *Manager) GetStats() (*cgroups.Stats, error) {
++	// TODO(cyphar): We can make this work if we figure out a way to allow usage
++	//               of cgroups with a rootless container. While this doesn't
++	//               actually require write access to a cgroup directory, the
++	//               statistics are not useful if they can be affected by
++	//               non-container processes.
++	return nil, fmt.Errorf("cannot get cgroup stats in rootless container")
++}
++
++func (m *Manager) Freeze(state configs.FreezerState) error {
++	// TODO(cyphar): We can make this work if we figure out a way to allow usage
++	//               of cgroups with a rootless container.
++	return fmt.Errorf("cannot use freezer cgroup in rootless container")
++}
++
++func (m *Manager) Destroy() error {
++	// We don't have to do anything here because we didn't do any setup.
++	return nil
++}
+diff --git a/libcontainer/cgroups/systemd/apply_systemd.go b/libcontainer/cgroups/systemd/apply_systemd.go
+index 2872bfa..456c57d 100644
+--- a/libcontainer/cgroups/systemd/apply_systemd.go
++++ b/libcontainer/cgroups/systemd/apply_systemd.go
+@@ -426,7 +426,7 @@ func getSubsystemPath(c *configs.Cgroup, subsystem string) (string, error) {
+ 		return "", err
+ 	}
+ 
+-	initPath, err := cgroups.GetInitCgroupDir(subsystem)
++	initPath, err := cgroups.GetInitCgroup(subsystem)
+ 	if err != nil {
+ 		return "", err
+ 	}
+diff --git a/libcontainer/cgroups/utils.go b/libcontainer/cgroups/utils.go
+index 52fc87e..5db3734 100644
+--- a/libcontainer/cgroups/utils.go
++++ b/libcontainer/cgroups/utils.go
+@@ -109,7 +109,7 @@ type Mount struct {
+ 	Subsystems []string
+ }
+ 
+-func (m Mount) GetThisCgroupDir(cgroups map[string]string) (string, error) {
++func (m Mount) GetOwnCgroup(cgroups map[string]string) (string, error) {
+ 	if len(m.Subsystems) == 0 {
+ 		return "", fmt.Errorf("no subsystem for mount")
+ 	}
+@@ -203,8 +203,8 @@ func GetAllSubsystems() ([]string, error) {
+ 	return subsystems, nil
+ }
+ 
+-// GetThisCgroupDir returns the relative path to the cgroup docker is running in.
+-func GetThisCgroupDir(subsystem string) (string, error) {
++// GetOwnCgroup returns the relative path to the cgroup docker is running in.
++func GetOwnCgroup(subsystem string) (string, error) {
+ 	cgroups, err := ParseCgroupFile("/proc/self/cgroup")
+ 	if err != nil {
+ 		return "", err
+@@ -213,8 +213,16 @@ func GetThisCgroupDir(subsystem string) (string, error) {
+ 	return getControllerPath(subsystem, cgroups)
+ }
+ 
+-func GetInitCgroupDir(subsystem string) (string, error) {
++func GetOwnCgroupPath(subsystem string) (string, error) {
++	cgroup, err := GetOwnCgroup(subsystem)
++	if err != nil {
++		return "", err
++	}
+ 
++	return getCgroupPathHelper(subsystem, cgroup)
++}
++
++func GetInitCgroup(subsystem string) (string, error) {
+ 	cgroups, err := ParseCgroupFile("/proc/1/cgroup")
+ 	if err != nil {
+ 		return "", err
+@@ -223,6 +231,31 @@ func GetInitCgroupDir(subsystem string) (string, error) {
+ 	return getControllerPath(subsystem, cgroups)
+ }
+ 
++func GetInitCgroupPath(subsystem string) (string, error) {
++	cgroup, err := GetInitCgroup(subsystem)
++	if err != nil {
++		return "", err
++	}
++
++	return getCgroupPathHelper(subsystem, cgroup)
++}
++
++func getCgroupPathHelper(subsystem, cgroup string) (string, error) {
++	mnt, root, err := FindCgroupMountpointAndRoot(subsystem)
++	if err != nil {
++		return "", err
++	}
++
++	// This is needed for nested containers, because in /proc/self/cgroup we
++	// see pathes from host, which don't exist in container.
++	relCgroup, err := filepath.Rel(root, cgroup)
++	if err != nil {
++		return "", err
++	}
++
++	return filepath.Join(mnt, relCgroup), nil
++}
++
+ func readProcsFile(dir string) ([]int, error) {
+ 	f, err := os.Open(filepath.Join(dir, CgroupProcesses))
+ 	if err != nil {
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 372763a..d847f18 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -520,10 +520,18 @@ func (c *linuxContainer) Resume() error {
+ }
+ 
+ func (c *linuxContainer) NotifyOOM() (<-chan struct{}, error) {
++	// XXX(cyphar): This requires cgroups.
++	if c.config.Rootless {
++		return nil, fmt.Errorf("cannot get OOM notifications from rootless container")
++	}
+ 	return notifyOnOOM(c.cgroupManager.GetPaths())
+ }
+ 
+ func (c *linuxContainer) NotifyMemoryPressure(level PressureLevel) (<-chan struct{}, error) {
++	// XXX(cyphar): This requires cgroups.
++	if c.config.Rootless {
++		return nil, fmt.Errorf("cannot get memory pressure notifications from rootless container")
++	}
+ 	return notifyMemoryPressure(c.cgroupManager.GetPaths(), level)
+ }
+ 
+diff --git a/libcontainer/factory_linux.go b/libcontainer/factory_linux.go
+index d553287..1f965e6 100644
+--- a/libcontainer/factory_linux.go
++++ b/libcontainer/factory_linux.go
+@@ -15,6 +15,7 @@ import (
+ 	"github.com/docker/docker/pkg/mount"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups/fs"
++	"github.com/opencontainers/runc/libcontainer/cgroups/rootless"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups/systemd"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/configs/validate"
+@@ -73,6 +74,20 @@ func Cgroupfs(l *LinuxFactory) error {
+ 	return nil
+ }
+ 
++// RootlessCgroups is an options func to configure a LinuxFactory to
++// return containers that use the "rootless" cgroup manager, which will
++// fail to do any operations not possible to do with an unprivileged user.
++// It should only be used in conjunction with rootless containers.
++func RootlessCgroups(l *LinuxFactory) error {
++	l.NewCgroupsManager = func(config *configs.Cgroup, paths map[string]string) cgroups.Manager {
++		return &rootless.Manager{
++			Cgroups: config,
++			Paths:   paths,
++		}
++	}
++	return nil
++}
++
+ // TmpfsRoot is an option func to mount LinuxFactory.Root to tmpfs.
+ func TmpfsRoot(l *LinuxFactory) error {
+ 	mounted, err := mount.Mounted(l.Root)
+@@ -169,6 +184,9 @@ func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, err
+ 	if err := os.Chown(containerRoot, uid, gid); err != nil {
+ 		return nil, newGenericError(err, SystemError)
+ 	}
++	if config.Rootless {
++		RootlessCgroups(l)
++	}
+ 	c := &linuxContainer{
+ 		id:            id,
+ 		root:          containerRoot,
+@@ -195,6 +213,10 @@ func (l *LinuxFactory) Load(id string) (Container, error) {
+ 		processStartTime: state.InitProcessStartTime,
+ 		fds:              state.ExternalDescriptors,
+ 	}
++	// We have to use the RootlessManager.
++	if state.Rootless {
++		RootlessCgroups(l)
++	}
+ 	c := &linuxContainer{
+ 		initProcess:          r,
+ 		initProcessStartTime: state.InitProcessStartTime,
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index e8b7506..bfe9955 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -254,15 +254,14 @@ func (p *initProcess) start() error {
+ 		return newSystemErrorWithCausef(err, "getting pipe fds for pid %d", p.pid())
+ 	}
+ 	p.setExternalDescriptors(fds)
+-	if !p.container.config.Rootless {
+-		// Do this before syncing with child so that no children can escape the
+-		// cgroup. We can't do this if we're not running as root.
+-		if err := p.manager.Apply(p.pid()); err != nil {
+-			return newSystemErrorWithCause(err, "applying cgroup configuration for process")
+-		}
++	// Do this before syncing with child so that no children can escape the
++	// cgroup. We don't need to worry about not doing this and not being root
++	// because we'd be using the rootless cgroup manager in that case.
++	if err := p.manager.Apply(p.pid()); err != nil {
++		return newSystemErrorWithCause(err, "applying cgroup configuration for process")
+ 	}
+ 	defer func() {
+-		if err != nil && !p.container.config.Rootless {
++		if err != nil {
+ 			// TODO: should not be the responsibility to call here
+ 			p.manager.Destroy()
+ 		}
+@@ -281,11 +280,8 @@ func (p *initProcess) start() error {
+ 	ierr := parseSync(p.parentPipe, func(sync *syncT) error {
+ 		switch sync.Type {
+ 		case procReady:
+-			// We can't set cgroups if we're in a rootless container.
+-			if !p.container.config.Rootless {
+-				if err := p.manager.Set(p.config.Config); err != nil {
+-					return newSystemErrorWithCause(err, "setting cgroup config for ready process")
+-				}
++			if err := p.manager.Set(p.config.Config); err != nil {
++				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
+ 			}
+ 			// set rlimits, this has to be done here because we lose permissions
+ 			// to raise the limits once we enter a user-namespace
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 1045a45..d507373 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -348,7 +348,7 @@ func getCgroupMounts(m *configs.Mount) ([]*configs.Mount, error) {
+ 	var binds []*configs.Mount
+ 
+ 	for _, mm := range mounts {
+-		dir, err := mm.GetThisCgroupDir(cgroupPaths)
++		dir, err := mm.GetOwnCgroup(cgroupPaths)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-- 
+2.7.4.3
+

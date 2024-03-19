@@ -1,0 +1,60 @@
+From e42b9955244945b3571aad2e2a612b827f6cafa2 Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Thu, 6 Dec 2018 21:41:59 +0800
+Subject: [PATCH 76/94] runc:  Fix syslog hook bug
+
+reason:If NewSyslogHook() function returns error, it indicates that
+systemd-journald service is not running, do not add this hook.
+
+Change-Id: Ifd6c9a79a4055da275a8c4c867195f220b0cdffd
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ main.go                  | 11 ++++-------
+ script/runc-euleros.spec |  2 +-
+ 2 files changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/main.go b/main.go
+index dcc2925..5f0ec91 100644
+--- a/main.go
++++ b/main.go
+@@ -8,7 +8,6 @@ import (
+ 	"github.com/urfave/cli"
+ 	"io"
+ 	"log/syslog"
+-	"net"
+ 	"os"
+ 	"strings"
+ )
+@@ -122,12 +121,10 @@ func main() {
+ 				return err
+ 			}
+ 			logrus.SetOutput(f)
+-			if conn, err := net.Dial("unixgram", "/run/systemd/journal/socket"); err == nil {
+-				defer conn.Close()
+-				hook, serr := logrus_syslog.NewSyslogHook("", "", syslog.LOG_INFO|syslog.LOG_USER, "docker-runc")
+-				if serr != nil {
+-					fmt.Fprint(f, fmt.Sprintf("new syslog hook get %s", serr))
+-				}
++			hook, serr := logrus_syslog.NewSyslogHook("", "", syslog.LOG_INFO|syslog.LOG_USER, "docker-runc")
++			if serr != nil {
++				fmt.Fprint(f, fmt.Sprintf("new syslog hook get %s", serr))
++			} else {
+ 				logrus.AddHook(hook)
+ 			}
+ 		}
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 354bb24..34f9d22 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 14%{?dist}
++Release: 15%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

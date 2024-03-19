@@ -1,0 +1,44 @@
+diff --git a/Makefile b/Makefile
+index b9d7c98..e44dcbf 100644
+--- a/Makefile
++++ b/Makefile
+@@ -113,6 +113,14 @@ localrootlessintegration: all
+ shell: 
+ 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
++	mv runc runc-openEuler-22.03-LTS-debug
++	mv debug-flag.go.bak debug-flag.go
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
++	mv runc runc-openEuler-22.03-LTS-debug-flag
++
+ install:
+ 	install -D -m0755 runc $(BINDIR)/runc
+ 
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file

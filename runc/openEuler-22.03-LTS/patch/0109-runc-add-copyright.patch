@@ -1,0 +1,31 @@
+From 8756ef9699eb7bd2c2ddd6cbff2f0f81d9991c05 Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Fri, 30 Aug 2019 00:43:29 +0800
+Subject: [PATCH] runc: add copyright
+
+reason: add copyright
+
+Change-Id: I9bc9a29de3c6138eee002b26ffd4b56965c0ea0f
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/fs/files.go | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/fs/files.go b/libcontainer/cgroups/fs/files.go
+index da4fd7d..d39b610 100644
+--- a/libcontainer/cgroups/fs/files.go
++++ b/libcontainer/cgroups/fs/files.go
+@@ -1,4 +1,9 @@
+-// +build linux
++/*
++Copyright (c) Huawei Technologies Co., Ltd. 2017-2019. All rights reserved.
++Description: files cgroup common functions
++Author: yangshukui
++Create: 2017-09-18
++*/
+ 
+ package fs
+ 
+-- 
+1.8.3.1
+

@@ -1,0 +1,64 @@
+From 423ffe00c5c0cdb999bf9a193ad43ed5b6473a2d Mon Sep 17 00:00:00 2001
+From: Wang Long <long.wanglong@huawei.com>
+Date: Tue, 24 Jan 2017 18:51:22 +0800
+Subject: [PATCH 39/94] Fix unittest and integration test error caused
+ by tty
+
+Change-Id: Iae44f5a598e60b9e026ced99ca9e92aa90771fcc
+Signed-off-by: Wang Long <long.wanglong@huawei.com>
+---
+ libcontainer/integration/execin_test.go | 8 +-------
+ tests/integration/exec.bats             | 4 ++--
+ 2 files changed, 3 insertions(+), 9 deletions(-)
+
+diff --git a/libcontainer/integration/execin_test.go b/libcontainer/integration/execin_test.go
+index 019757f..f06075e 100644
+--- a/libcontainer/integration/execin_test.go
++++ b/libcontainer/integration/execin_test.go
+@@ -62,9 +62,6 @@ func TestExecIn(t *testing.T) {
+ 	if !strings.Contains(out, "cat") || !strings.Contains(out, "ps") {
+ 		t.Fatalf("unexpected running process, output %q", out)
+ 	}
+-	if strings.Contains(out, "\r") {
+-		t.Fatalf("unexpected carriage-return in output")
+-	}
+ }
+ 
+ func TestExecInUsernsRlimit(t *testing.T) {
+@@ -327,12 +324,9 @@ func TestExecInTTY(t *testing.T) {
+ 	waitProcess(process, t)
+ 
+ 	out := stdout.String()
+-	if !strings.Contains(out, "cat") || !strings.Contains(out, "ps") {
++	if !strings.Contains(out, "cat") || !strings.Contains(string(out), "ps") {
+ 		t.Fatalf("unexpected running process, output %q", out)
+ 	}
+-	if strings.Contains(out, "\r") {
+-		t.Fatalf("unexpected carriage-return in output")
+-	}
+ }
+ 
+ func TestExecInEnvironment(t *testing.T) {
+diff --git a/tests/integration/exec.bats b/tests/integration/exec.bats
+index f172f9b..268a7e1 100644
+--- a/tests/integration/exec.bats
++++ b/tests/integration/exec.bats
+@@ -95,7 +95,7 @@ function teardown() {
+ 
+   runc exec --cwd /bin test_busybox pwd
+   [ "$status" -eq 0 ]
+-  [[ ${output} == "/bin" ]]
++  [[ $(echo "${output}" | tr -d '\r') == "/bin" ]]
+ }
+ 
+ @test "runc exec --env" {
+@@ -124,5 +124,5 @@ function teardown() {
+   runc exec --user 1000:1000 test_busybox id
+   [ "$status" -eq 0 ]
+ 
+-  [[ ${output} == "uid=1000 gid=1000" ]]
++  [[ $(echo "${output}" | tr -d '\r') == "uid=1000 gid=1000" ]]
+ }
+-- 
+2.7.4.3
+

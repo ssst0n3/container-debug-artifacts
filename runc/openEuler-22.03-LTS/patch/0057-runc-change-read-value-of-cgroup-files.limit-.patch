@@ -1,0 +1,55 @@
+From aff98c05dbaf30fec52a0afed19ebf4a03303d63 Mon Sep 17 00:00:00 2001
+From: caihaomin <caihaomin@huawei.com>
+Date: Mon, 6 Nov 2017 01:43:45 +0000
+Subject: [PATCH 57/94] runc: change read value of cgroup files.limit
+ into string
+
+[Changelog]:change read value of cgroup files.limit from int to string.
+For avoiding of value `max`
+[Author]git
+
+Change-Id: Iec6197528b1aebb13a0ea64ba919a7b4c6f31d61
+Signed-off-by: caihaomin <caihaomin@huawei.com>
+---
+ libcontainer/cgroups/fs/files.go | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/files.go b/libcontainer/cgroups/fs/files.go
+index 3214a82..70e9524 100644
+--- a/libcontainer/cgroups/fs/files.go
++++ b/libcontainer/cgroups/fs/files.go
+@@ -8,6 +8,7 @@ import (
+ 
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
++	"path/filepath"
+ )
+ 
+ type FilesGroup struct {
+@@ -51,12 +52,21 @@ func (s *FilesGroup) GetStats(path string, stats *cgroups.Stats) error {
+ 		return fmt.Errorf("failed to parse files.usage - %s", err)
+ 	}
+ 
+-	limit, err := getCgroupParamUint(path, "files.limit")
++	maxString, err := getCgroupParamString(path, "files.limit")
+ 	if err != nil {
+ 		return fmt.Errorf("failed to parse files.limit - %s", err)
+ 	}
+ 
++	// Default if files.limit == "max" is 0 -- which represents "no limit".
++	var max uint64
++	if maxString != "max" {
++		max, err = parseUint(maxString, 10, 64)
++		if err != nil {
++			return fmt.Errorf("failed to parse files.limit -- unable to parse %q as a uint from Cgroup file %q", maxString, filepath.Join(path, "file.limits"))
++		}
++	}
++
+ 	stats.FilesStats.Usage = usage
+-	stats.FilesStats.Limit = limit
++	stats.FilesStats.Limit = max
+ 	return nil
+ }
+-- 
+2.7.4.3
+

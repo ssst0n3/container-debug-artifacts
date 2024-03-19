@@ -1,0 +1,118 @@
+From e8e1ec218358495648893370e19eec093681766d Mon Sep 17 00:00:00 2001
+From: leizhongkai <leizhongkai@huawei.com>
+Date: Thu, 24 Jan 2019 20:18:14 +0800
+Subject: [PATCH 82/94] runc: make runc spec and docker-18.9
+ compatible
+
+reason:make runc spec and docker-18.9 compatible
+
+Change-Id: I794c936579a4decc1d0cd92e3483c6378dba5bfd
+Signed-off-by: leizhongkai <leizhongkai@huawei.com>
+---
+ spec.go | 76 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 75 insertions(+), 1 deletion(-)
+
+diff --git a/spec.go b/spec.go
+index b33e44c..0bbe967 100644
+--- a/spec.go
++++ b/spec.go
+@@ -121,6 +121,30 @@ type compatSpec struct {
+ 	Linux *linux `json:"linux,omitempty" platform:"linux"`
+ }
+ 
++// linuxBlockIODevice holds major:minor format supported in blkio cgroup
++type linuxBlockIODevice struct {
++	// Major is the device's major number.
++	Major int64 `json:"major"`
++	// Minor is the device's minor number.
++	Minor int64 `json:"minor"`
++}
++
++// LinuxWeightDevice struct holds a `major:minor weight` pair for blkioWeightDevice
++type LinuxWeightDevice struct {
++	linuxBlockIODevice
++	// Weight is the bandwidth rate for the device, range is from 10 to 1000
++	Weight *uint16 `json:"weight,omitempty"`
++	// LeafWeight is the bandwidth rate for the device while competing with the cgroup's child cgroups, range is from 10 to 1000, CFQ scheduler only
++	LeafWeight *uint16 `json:"leafWeight,omitempty"`
++}
++
++// LinuxThrottleDevice struct holds a `major:minor rate_per_second` pair
++type LinuxThrottleDevice struct {
++	linuxBlockIODevice
++	// Rate is the IO rate limit per cgroup per device
++	Rate uint64 `json:"rate"`
++}
++
+ type linux struct {
+ 	specs.Linux
+ 	Resources *linuxResources `json:"resources,omitempty"`
+@@ -128,7 +152,26 @@ type linux struct {
+ 
+ type linuxResources struct {
+ 	specs.LinuxResources
+-	Memory *linuxMemory `json:"memory,omitempty"`
++	Memory  *linuxMemory  `json:"memory,omitempty"`
++	BlockIO *LinuxBlockIO `json:"blockIO,omitempty"`
++}
++
++// LinuxBlockIO for Linux cgroup 'blkio' resource management
++type LinuxBlockIO struct {
++	// Specifies per cgroup weight
++	Weight *uint16 `json:"weight,omitempty"`
++	// Specifies tasks' weight in the given cgroup while competing with the cgroup's child cgroups, CFQ scheduler only
++	LeafWeight *uint16 `json:"leafWeight,omitempty"`
++	// Weight per cgroup per device, can override BlkioWeight
++	WeightDevice []LinuxWeightDevice `json:"weightDevice,omitempty"`
++	// IO read rate limit per cgroup per device, bytes per second
++	ThrottleReadBpsDevice []LinuxThrottleDevice `json:"throttleReadBpsDevice,omitempty"`
++	// IO write rate limit per cgroup per device, bytes per second
++	ThrottleWriteBpsDevice []LinuxThrottleDevice `json:"throttleWriteBpsDevice,omitempty"`
++	// IO read rate limit per cgroup per device, IO per second
++	ThrottleReadIOPSDevice []LinuxThrottleDevice `json:"throttleReadIOPSDevice,omitempty"`
++	// IO write rate limit per cgroup per device, IO per second
++	ThrottleWriteIOPSDevice []LinuxThrottleDevice `json:"throttleWriteIOPSDevice,omitempty"`
+ }
+ 
+ type linuxMemory struct {
+@@ -209,6 +252,37 @@ func updateCompactSpec(compatSpec *compatSpec) (*specs.Spec, error) {
+ 	}
+ 
+ 	spec.Linux.Resources.DisableOOMKiller = compatSpec.Linux.Resources.Memory.DisableOOMKiller
++	if compatSpec.Linux.Resources.BlockIO != nil {
++		spec.Linux.Resources.BlockIO.Weight = compatSpec.Linux.Resources.BlockIO.Weight
++		spec.Linux.Resources.BlockIO.LeafWeight = compatSpec.Linux.Resources.BlockIO.LeafWeight
++		if compatSpec.Linux.Resources.BlockIO.WeightDevice != nil {
++			for _, wd := range compatSpec.Linux.Resources.BlockIO.WeightDevice {
++				wdSpec := specs.LinuxWeightDevice{
++					Weight:     wd.Weight,
++					LeafWeight: wd.LeafWeight,
++				}
++				wdSpec.Major = wd.Major
++				wdSpec.Minor = wd.Minor
++				spec.Linux.Resources.BlockIO.WeightDevice = append(spec.Linux.Resources.BlockIO.WeightDevice, wdSpec)
++			}
++		}
++		procLinuxThrottleDevice := func(src []LinuxThrottleDevice, dest *[]specs.LinuxThrottleDevice) {
++			if src != nil {
++				for _, ltd := range src {
++					ltdSpec := specs.LinuxThrottleDevice{
++						Rate: ltd.Rate,
++					}
++					ltdSpec.Major = ltd.Major
++					ltdSpec.Minor = ltd.Minor
++					*dest = append(*dest, ltdSpec)
++				}
++			}
++		}
++		procLinuxThrottleDevice(compatSpec.Linux.Resources.BlockIO.ThrottleReadBpsDevice, &spec.Linux.Resources.BlockIO.ThrottleReadBpsDevice)
++		procLinuxThrottleDevice(compatSpec.Linux.Resources.BlockIO.ThrottleWriteBpsDevice, &spec.Linux.Resources.BlockIO.ThrottleWriteBpsDevice)
++		procLinuxThrottleDevice(compatSpec.Linux.Resources.BlockIO.ThrottleReadIOPSDevice, &spec.Linux.Resources.BlockIO.ThrottleReadIOPSDevice)
++		procLinuxThrottleDevice(compatSpec.Linux.Resources.BlockIO.ThrottleWriteIOPSDevice, &spec.Linux.Resources.BlockIO.ThrottleWriteIOPSDevice)
++	}
+ 
+ 	return &spec, nil
+ }
+-- 
+2.7.4.3
+

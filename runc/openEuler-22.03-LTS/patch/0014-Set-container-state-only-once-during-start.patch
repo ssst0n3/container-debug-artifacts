@@ -1,0 +1,39 @@
+From b9b6667861bcc98579489aa6cec8012249fedbab Mon Sep 17 00:00:00 2001
+From: Harshal Patil <harshal.patil@in.ibm.com>
+Date: Tue, 4 Apr 2017 15:08:04 +0530
+Subject: [PATCH 14/94] Set container state only once during start
+
+Change-Id: Iae2bcd397cbc40c540e32807d946c3ec81783803
+Signed-off-by: Harshal Patil <harshal.patil@in.ibm.com>
+---
+ libcontainer/container_linux.go | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 71fa682..26e51ae 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -263,9 +263,6 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
+ 	}
+ 	// generate a timestamp indicating when the container was started
+ 	c.created = time.Now().UTC()
+-	c.state = &runningState{
+-		c: c,
+-	}
+ 	if isInit {
+ 		c.state = &createdState{
+ 			c: c,
+@@ -292,6 +289,10 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
+ 				}
+ 			}
+ 		}
++	} else {
++		c.state = &runningState{
++			c: c,
++		}
+ 	}
+ 	return nil
+ }
+-- 
+2.7.4.3
+

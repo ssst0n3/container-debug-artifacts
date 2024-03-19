@@ -1,0 +1,31 @@
+From a119a29bc908bfd1385cbdcee4cc800e2b022b09 Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Wed, 22 Aug 2018 17:06:01 +0800
+Subject: [PATCH 54/94] runc: ignore exec.fifo removing not exist error
+
+[Changelog]:cherry-pick from vtwrse <4af7ee1635962fe3bd86ac87064fdcd7e60c1135>
+Change-Id: I34a30672fb92c974965b3a53cfb8ccc75932e6d8
+Signed-off-by: jiangpengfei9 <jiangpengfei9@huawei.com>
+---
+ libcontainer/container_linux.go | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 50fe657..502a274 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -255,7 +255,10 @@ func (c *linuxContainer) exec() error {
+ 		if err := readFromExecFifo(f); err != nil {
+ 			return err
+ 		}
+-		return os.Remove(path)
++		if err := os.Remove(path); !os.IsNotExist(err) {
++			return err
++		}
++		return nil
+ 	}
+ }
+ 
+-- 
+2.7.4.3
+

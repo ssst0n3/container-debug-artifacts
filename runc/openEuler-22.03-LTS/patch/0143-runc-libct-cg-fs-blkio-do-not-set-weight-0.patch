@@ -1,0 +1,50 @@
+From 535863ca83bef6f294780c02633fa50dc563672a Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Sun, 13 Jun 2021 18:03:22 -0700
+Subject: [PATCH] libct/cg/fs/blkio: do not set weight == 0
+
+For per-device weight, you can set weight and/or leaf weight.
+The problem is, with the recent fix to use BFQ on cgroup v1,
+if per-device weights are set, the code tries to set device
+weight to blkio.bfq.weight, and the leaf weight to
+blkio.leaf_weight_device. The latter file does not exist on
+kernels v5.0, meaning one can not set any per-device weights
+at all.
+
+The fix is to only set weights if they are non-zero (i.e. set).
+
+The test case will come in a following commit.
+
+Fixes: 6339d8a0dd7a72
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ libcontainer/cgroups/fs/blkio.go | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/blkio.go b/libcontainer/cgroups/fs/blkio.go
+index a142cb99..ea2cf647 100644
+--- a/libcontainer/cgroups/fs/blkio.go
++++ b/libcontainer/cgroups/fs/blkio.go
+@@ -42,11 +42,15 @@ func (s *BlkioGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 		}
+ 	}
+ 	for _, wd := range cgroup.Resources.BlkioWeightDevice {
+-		if err := writeFile(path, "blkio.weight_device", wd.WeightString()); err != nil {
+-			return err
++		if wd.Weight != 0 {
++			if err := writeFile(path, "blkio.weight_device", wd.WeightString()); err != nil {
++				return err
++			}
+ 		}
+-		if err := writeFile(path, "blkio.leaf_weight_device", wd.LeafWeightString()); err != nil {
+-			return err
++		if wd.LeafWeight != 0 {
++			if err := writeFile(path, "blkio.leaf_weight_device", wd.LeafWeightString()); err != nil {
++				return err
++			}
+ 		}
+ 	}
+ 	for _, td := range cgroup.Resources.BlkioThrottleReadBpsDevice {
+-- 
+2.33.0
+

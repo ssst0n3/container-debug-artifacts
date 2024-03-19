@@ -1,0 +1,108 @@
+From 19106da5ad20c3b46888a75b08c00d0b0b12e13b Mon Sep 17 00:00:00 2001
+From: jingrui <jingrui@huawei.com>
+Date: Wed, 23 Jan 2019 22:40:51 +0800
+Subject: [PATCH 84/94] oci:  fix runc panic and support oom score
+
+reason: see below.
+
+1. docker plugin using simple spec, should add more check to avoid runc
+   panic.
+2. add oom-score support.
+
+Change-Id: I0999c8f61209e8127390508577034446d9ae1b4f
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ script/runc-euleros.spec |  2 +-
+ spec.go                  | 39 ++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index faccbf6..bcbcff1 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 17%{?dist}
++Release: 18%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+diff --git a/spec.go b/spec.go
+index 0bbe967..3b90791 100644
+--- a/spec.go
++++ b/spec.go
+@@ -118,7 +118,8 @@ func sPtr(s string) *string { return &s }
+ 
+ type compatSpec struct {
+ 	specs.Spec
+-	Linux *linux `json:"linux,omitempty" platform:"linux"`
++	Linux   *linux     `json:"linux,omitempty" platform:"linux"`
++	Process processRc6 `json:"process"`
+ }
+ 
+ // linuxBlockIODevice holds major:minor format supported in blkio cgroup
+@@ -150,6 +151,11 @@ type linux struct {
+ 	Resources *linuxResources `json:"resources,omitempty"`
+ }
+ 
++type processRc6 struct {
++	specs.Process
++	OOMScoreAdj *int `json:"oomScoreAdj,omitempty" platform:"linux"`
++}
++
+ type linuxResources struct {
+ 	specs.LinuxResources
+ 	Memory  *linuxMemory  `json:"memory,omitempty"`
+@@ -191,10 +197,26 @@ type linuxMemory struct {
+ 	DisableOOMKiller *bool `json:"disableOOMKiller,omitempty"`
+ }
+ 
++func versionRc6Plus(ver string) bool {
++	if len(ver) < 5 {		// version should be a.b.c[-rcn][x]
++		return false
++	}
++
++	// docker-18.09		1.0.1
++	if ver[:5] >= "1.0.1" {
++		return true
++	}
++
++	// TODO: add more version detect, support ab.cd.ef format.
++
++	// < 1.0.0-rc6: include 1.0.0-rc5xxx
++	return false
++}
++
+ // loadSpec loads the specification from the provided path.
+ func loadSpec(cPath string) (spec *specs.Spec, err error) {
+ 	spec, err = loadOriginSpec(cPath)
+-	if err != nil || spec.Linux.Resources.DisableOOMKiller == nil {
++	if err != nil || versionRc6Plus(spec.Version) {
+ 		return loadCompactSpec(cPath)
+ 	}
+ 
+@@ -251,7 +273,18 @@ func updateCompactSpec(compatSpec *compatSpec) (*specs.Spec, error) {
+ 		return nil, fmt.Errorf("update config failed %v", err)
+ 	}
+ 
+-	spec.Linux.Resources.DisableOOMKiller = compatSpec.Linux.Resources.Memory.DisableOOMKiller
++	if compatSpec != nil && compatSpec.Linux != nil &&
++		compatSpec.Linux.Resources != nil &&
++		compatSpec.Linux.Resources.Memory != nil &&
++		compatSpec.Linux.Resources.Memory.DisableOOMKiller != nil {
++		spec.Linux.Resources.DisableOOMKiller = compatSpec.Linux.Resources.Memory.DisableOOMKiller
++	}
++
++	if compatSpec != nil && compatSpec.Process.OOMScoreAdj != nil &&
++		spec.Linux != nil && spec.Linux.Resources != nil {
++		spec.Linux.Resources.OOMScoreAdj = compatSpec.Process.OOMScoreAdj
++	}
++
+ 	if compatSpec.Linux.Resources.BlockIO != nil {
+ 		spec.Linux.Resources.BlockIO.Weight = compatSpec.Linux.Resources.BlockIO.Weight
+ 		spec.Linux.Resources.BlockIO.LeafWeight = compatSpec.Linux.Resources.BlockIO.LeafWeight
+-- 
+2.7.4.3
+

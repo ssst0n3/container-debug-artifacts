@@ -1,0 +1,49 @@
+From a5d5191301de25f26942c07ea4502a716755a32e Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Mon, 13 Nov 2023 15:39:21 -0800
+Subject: [PATCH] libct: Destroy: don't proceed in case of errors
+
+For some reason, container destroy operation removes container's state
+directory even if cgroup removal fails (and then still returns an
+error). It has been that way since commit 5c246d038fc47b, which added
+cgroup removal.
+
+This is problematic because once the container state dir is removed, we
+no longer know container's cgroup and thus can't remove it.
+
+Let's return the error early and fail if cgroup can't be removed.
+
+Same for other operations: do not proceed if we fail.
+
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ libcontainer/state_linux.go | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/libcontainer/state_linux.go b/libcontainer/state_linux.go
+index c77d4f2..dd4dcd4 100644
+--- a/libcontainer/state_linux.go
++++ b/libcontainer/state_linux.go
+@@ -44,14 +44,14 @@ func destroy(c *linuxContainer) error {
+ 			logrus.Warn(err)
+ 		}
+ 	}
+-	err := c.cgroupManager.Destroy()
+-	if rerr := os.RemoveAll(c.root); err == nil {
+-		err = rerr
++	if err := c.cgroupManager.Destroy(); err != nil {
++		return fmt.Errorf("unable to remove container's cgroup: %w", err)
+ 	}
+-	c.initProcess = nil
+-	if herr := runPoststopHooks(c); err == nil {
+-		err = herr
++	if err := os.RemoveAll(c.root); err != nil {
++		return fmt.Errorf("unable to remove container root dir: %w", err)
+ 	}
++	c.initProcess = nil
++	err := runPoststopHooks(c)
+ 	c.state = &stoppedState{c: c}
+ 	return err
+ }
+-- 
+2.17.1

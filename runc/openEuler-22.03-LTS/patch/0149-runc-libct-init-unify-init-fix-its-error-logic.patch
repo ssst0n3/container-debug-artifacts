@@ -1,0 +1,64 @@
+From 3067c7503547e7c1f2499a69b1713051515743e0 Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Wed, 9 Aug 2023 12:04:26 +0900
+Subject: [PATCH] libct/init: unify init, fix its error logic
+
+Fix init error handling logic.
+
+The main issues at hand are:
+- the "unable to convert _LIBCONTAINER_INITPIPE" error from
+  StartInitialization is never shown;
+- errors from WriteSync and WriteJSON are never shown;
+
+Generally, our goals are:
+ - if there's any error, do our best to show it;
+ - but only show each error once;
+
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ libcontainer/factory_linux.go | 5 +++--
+ main_unix.go                  | 7 +++----
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/libcontainer/factory_linux.go b/libcontainer/factory_linux.go
+index e4ef518..0b2aa74 100644
+--- a/libcontainer/factory_linux.go
++++ b/libcontainer/factory_linux.go
+@@ -294,13 +294,14 @@ func (l *LinuxFactory) StartInitialization() (err error) {
+ 		// We have an error during the initialization of the container's init,
+ 		// send it back to the parent process in the form of an initError.
+ 		if werr := utils.WriteJSON(pipe, syncT{procError}); werr != nil {
+-			fmt.Fprintln(os.Stderr, err)
++			fmt.Fprintln(os.Stderr, werr)
+ 			return
+ 		}
+ 		if werr := utils.WriteJSON(pipe, newSystemError(err)); werr != nil {
+-			fmt.Fprintln(os.Stderr, err)
++			fmt.Fprintln(os.Stderr, werr)
+ 			return
+ 		}
++		err = nil
+ 	}()
+ 	defer func() {
+ 		if e := recover(); e != nil {
+diff --git a/main_unix.go b/main_unix.go
+index 0479949..24e64b9 100644
+--- a/main_unix.go
++++ b/main_unix.go
+@@ -37,10 +37,9 @@ var initCommand = cli.Command{
+ 		factory, _ := libcontainer.New("")
+ 		if err := factory.StartInitialization(); err != nil {
+ 			fmt.Fprintf(os.Stderr, "libcontainer: container start initialization failed: %s", err)
+-			// as the error is sent back to the parent there is no need to log
+-			// or write it to stderr because the parent process will handle this
+-			os.Exit(1)
+ 		}
+-		panic("libcontainer: container init failed to exec")
++		fmt.Fprint(os.Stderr, "libcontainer: container init failed to exec")
++		os.Exit(1)
++		return nil
+ 	},
+ }
+-- 
+2.33.0
+

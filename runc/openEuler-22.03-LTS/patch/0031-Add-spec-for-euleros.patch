@@ -1,0 +1,70 @@
+From 3a4b5e8752e2200d0b7967c0cf0fd8ab859b6d1a Mon Sep 17 00:00:00 2001
+From: Lei Jitang <leijitang@huawei.com>
+Date: Mon, 17 Jul 2017 02:39:37 -0400
+Subject: [PATCH 31/94] Add spec for euleros
+
+Change-Id: I74128e7ba4aa7f2a15515ac753664c933432b149
+Signed-off-by: Lei Jitang <leijitang@huawei.com>
+---
+ script/runc-euleros.spec | 49 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+ create mode 100644 script/runc-euleros.spec
+
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+new file mode 100644
+index 0000000..a925e02
+--- /dev/null
++++ b/script/runc-euleros.spec
+@@ -0,0 +1,49 @@
++%global _bindir /usr/local/bin
++
++Name: docker-runc
++Version: 1.0.0.rc3
++Release: 1%{?dist}
++Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
++
++License: ASL 2.0
++Source: %{name}.tar.gz
++
++URL: https://www.opencontainers.org/
++Vendor: OCI
++Packager: OCI 
++
++BuildRequires: golang == 1.8.3
++BuildRequires: glibc-static
++BuildRequires: make
++BuildRequires: libseccomp-devel 
++BuildRequires: libselinux-devel
++
++
++%description
++runc is a CLI tool for spawning and running containers according to the OCF specification
++
++%prep
++%setup -c -n runc
++
++%install
++
++
++mkdir -p .gopath/src/github.com/opencontainers
++export GOPATH=`pwd`/.gopath
++ln -sf `pwd` .gopath/src/github.com/opencontainers/runc
++cd .gopath/src/github.com/opencontainers/runc
++make BUILDTAGS="seccomp selinux" static 
++rm -rf .gopath
++
++install -d $RPM_BUILD_ROOT/%{_bindir}
++install -p -m 755 runc $RPM_BUILD_ROOT/%{_bindir}/runc
++
++
++%clean
++%{__rm} -rf %{_bindir}/runc
++
++%files
++%{_bindir}/runc
++
++%changelog
++
+-- 
+2.7.4.3
+

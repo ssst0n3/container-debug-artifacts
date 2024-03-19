@@ -1,0 +1,24 @@
+From 34adecd11a87b5995ce3a482987944d4d8644008 Mon Sep 17 00:00:00 2001
+From: Wenlong Zhang <zhangwenlong@loongson.cn>
+Date: Wed, 9 Nov 2022 11:22:38 +0800
+Subject: [PATCH] SIGUNUSED is nolonger support for loongarch
+
+---
+ kill.go | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/kill.go b/kill.go
+index f80c4db..3d0e8b2 100644
+--- a/kill.go
++++ b/kill.go
+@@ -39,7 +39,6 @@ var signalMap = map[string]syscall.Signal{
+ 	"TSTP":   syscall.SIGTSTP,
+ 	"TTIN":   syscall.SIGTTIN,
+ 	"TTOU":   syscall.SIGTTOU,
+-	"UNUSED": syscall.SIGUNUSED,
+ 	"URG":    syscall.SIGURG,
+ 	"USR1":   syscall.SIGUSR1,
+ 	"USR2":   syscall.SIGUSR2,
+-- 
+2.33.0
+

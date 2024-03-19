@@ -1,0 +1,33 @@
+From df24ec79d3a69e9deab962eacc8ecbd46b0aefd9 Mon Sep 17 00:00:00 2001
+From: Ed King <eking@pivotal.io>
+Date: Tue, 23 Jan 2018 10:46:31 +0000
+Subject: [PATCH 51/94] runc: Return from goroutine when it should
+ terminate
+
+
+[Changelog]: This is cherry-picked from runc upstream:
+ https://github.com/opencontainers/runc/pull/1698
+[Author]:Shukui Yang
+
+Change-Id: Ie99f80c1fb5912d99dd7426b47f93e9f5a6efb23
+Signed-off-by: Craig Furman <cfurman@pivotal.io>
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/container_linux.go | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 278f597..50fe657 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -295,6 +295,7 @@ func awaitFifoOpen(path string) <-chan openResult {
+ 		f, err := os.OpenFile(path, os.O_RDONLY, 0)
+ 		if err != nil {
+ 			fifoOpened <- openResult{err: newSystemErrorWithCause(err, "open exec fifo for reading")}
++			return
+ 		}
+ 		fifoOpened <- openResult{file: f}
+ 	}()
+-- 
+2.7.4.3
+

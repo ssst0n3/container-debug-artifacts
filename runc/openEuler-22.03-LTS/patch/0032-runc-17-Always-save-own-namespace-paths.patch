@@ -1,0 +1,84 @@
+From 59a5c027ef71cbad624c7547f3031dc87fc6220d Mon Sep 17 00:00:00 2001
+From: Yuanhong Peng <pengyuanhong@huawei.com>
+Date: Thu, 13 Jul 2017 16:57:00 +0800
+Subject: [PATCH 32/94] runc-17: Always save own namespace paths
+
+[Changelog]: Always save own namespace paths
+
+fix https://github.com/opencontainers/runc/issues/1476
+
+If containerA shares namespace, say ipc namespace, with containerB, then
+its ipc namespace path would be the same as containerB and be stored in
+`state.json`. Exec into containerA will just read the namespace paths
+stored in this file and join these namespaces. So, if containerB has
+already been stopped, `docker exec containerA` will fail.
+
+To address this issue, we should always save own namespace paths no
+matter if we share namespaces with other containers.
+
+**before:**
+```
+    # docker run -tid --name 111 ubuntu
+    b123d1a43786523996a52f88c0484b77f778ff59435e257b901926366ba9e046
+    # docker run -tid --name 222 --net container:111 ubuntu
+    4685ca6a5e9fd03c634a88f6a07009738729f6210b13d32ea8fc46a058b1f004
+    # docker restart 111
+    111
+    # docker exec -ti 222 bash
+    rpc error: code = 2 desc = oci runtime error: exec failed: container_linux.go:240:
+    creating new parent process caused "container_linux.go:1266: running lstat on namespace
+    path \"/proc/14575/ns/net\" caused \"lstat /proc/14575/ns/net: no such file or directory\""
+```
+
+**after:**
+```
+    # docker run -tid --name 111 ubuntu
+    e00dbfe3bf56272d7bdec232135f707b4a715cb0d39cdc4d3e90b05075497175
+    # docker run -tid --name 222 --net container:111 ubuntu
+    0806efe28080392f5a3ef416c363be0d82c3bc64d069f227d57ab34170b6fb16
+    # docker restart 111
+    111
+    # docker exec -ti 222 bash
+    root@e00dbfe3bf56:/#
+```
+
+related upstream PR: https://github.com/opencontainers/runc/pull/1477
+
+Change-Id: I4278f64704c4b0ab0c2e5b44ec9ecdd34735144d
+Signed-off-by: Yuanhong Peng <pengyuanhong@huawei.com>
+Signed-off-by: yangshukui <yangshukui@huawei.com>
+---
+ libcontainer/configs/namespaces_unix.go | 3 ---
+ libcontainer/container_linux_test.go    | 2 +-
+ 2 files changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/libcontainer/configs/namespaces_unix.go b/libcontainer/configs/namespaces_unix.go
+index 1f0b3ee..12470a0 100644
+--- a/libcontainer/configs/namespaces_unix.go
++++ b/libcontainer/configs/namespaces_unix.go
+@@ -81,9 +81,6 @@ type Namespace struct {
+ }
+ 
+ func (n *Namespace) GetPath(pid int) string {
+-	if n.Path != "" {
+-		return n.Path
+-	}
+ 	return fmt.Sprintf("/proc/%d/ns/%s", pid, NsName(n.Type))
+ }
+ 
+diff --git a/libcontainer/container_linux_test.go b/libcontainer/container_linux_test.go
+index b7ce552..b69e344 100644
+--- a/libcontainer/container_linux_test.go
++++ b/libcontainer/container_linux_test.go
+@@ -134,7 +134,7 @@ func TestGetContainerState(t *testing.T) {
+ 	var (
+ 		pid                 = os.Getpid()
+ 		expectedMemoryPath  = "/sys/fs/cgroup/memory/myid"
+-		expectedNetworkPath = "/networks/fd"
++		expectedNetworkPath = fmt.Sprintf("/proc/%d/ns/net", pid)
+ 	)
+ 	container := &linuxContainer{
+ 		id: "myid",
+-- 
+2.7.4.3
+

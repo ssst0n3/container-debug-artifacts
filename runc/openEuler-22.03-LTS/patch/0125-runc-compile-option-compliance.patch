@@ -1,0 +1,38 @@
+From d7e62b082d564d0ac1e58257f34d25082e58c3cf Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Thu, 18 Mar 2021 11:17:13 +0800
+Subject: [PATCH] runc: compile option compliance
+
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ Makefile | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 43d15bf..fcf34ea 100644
+--- a/Makefile
++++ b/Makefile
+@@ -39,10 +39,17 @@ recvtty: contrib/cmd/recvtty/recvtty
+ contrib/cmd/recvtty/recvtty: $(SOURCES)
+ 	go build -i -ldflags " -buildid=IdByIsula ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
++LD_FLAGS='-w -buildid=none -tmpdir=/tmp/bep-runc -linkmode=external -extldflags=-Wl,-z,relro,-z,now \
++          -X main.gitCommit=${COMMIT} -X main.version=${VERSION}'
++
+ static: $(SOURCES)
+-	mkdir -p ${BEP_DIR}
+-	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -buildid=IdByIsula -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
+-	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -buildid=IdByIsula -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
++	rm -rf /tmp/bep-runc && mkdir /tmp/bep-runc
++	CGO_ENABLED=1 \
++	CGO_CFLAGS="-fstack-protector-strong -fPIE" \
++	CGO_CPPFLAGS="-fstack-protector-strong -fPIE" \
++	CGO_LDFLAGS_ALLOW='-Wl,-z,relro,-z,now' \
++	CGO_LDFLAGS="-Wl,-z,relro,-z,now -Wl,-z,noexecstack" \
++	go build -buildmode=pie -tags "$(BUILDTAGS) cgo static_build" -ldflags '-extldflags=-static' -ldflags $(LD_FLAGS) -o runc .
+ 
+ release:
+ 	@flag_list=(seccomp selinux apparmor static); \
+-- 
+1.8.3.1
+

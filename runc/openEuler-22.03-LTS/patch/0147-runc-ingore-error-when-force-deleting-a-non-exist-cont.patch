@@ -1,0 +1,61 @@
+From ec18dd94cf7df14516e95dc5b9023cff650c7196 Mon Sep 17 00:00:00 2001
+From: Antonio Murdaca <runcom@redhat.com>
+Date: Tue, 16 May 2017 22:17:34 +0200
+Subject: [PATCH] Ignore error when force deleting a non-existing container
+ 
+This patch mimics the behavior of "rm -rf" so that if a container
+doesn't exist and you force delete it, it won't error out.
+ 
+Signed-off-by: Antonio Murdaca <runcom@redhat.com>
+---
+ delete.go                     | 6 +++++-
+ tests/integration/delete.bats | 5 +++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/delete.go b/delete.go
+index a2b14f3..6db2978 100644
+--- a/delete.go
++++ b/delete.go
+@@ -50,6 +50,7 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
+ 		}
+ 
+ 		id := context.Args().First()
++		force := context.Bool("force")
+ 		container, err := getContainer(context)
+ 		if err != nil {
+ 			if lerr, ok := err.(libcontainer.Error); ok && lerr.Code() == libcontainer.ContainerNotExists {
+@@ -59,6 +60,9 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
+ 				if e := os.RemoveAll(path); e != nil {
+ 					fmt.Fprintf(os.Stderr, "remove %s: %v\n", path, e)
+ 				}
++				if force {
++					return nil
++				}
+ 			}
+ 			return err
+ 		}
+@@ -72,7 +76,7 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
+ 		case libcontainer.Created:
+ 			return killContainer(container)
+ 		default:
+-			if context.Bool("force") {
++			if force {
+ 				return killContainer(container)
+ 			} else {
+ 				return fmt.Errorf("cannot delete container %s that is not stopped: %s\n", id, s)
+diff --git a/tests/integration/delete.bats b/tests/integration/delete.bats
+index 2c11e79..90a4f47 100644
+--- a/tests/integration/delete.bats
++++ b/tests/integration/delete.bats
+@@ -50,3 +50,8 @@ function teardown() {
+   runc state test_busybox
+   [ "$status" -ne 0 ]
+ }
++
++@test "runc delete --force ignore not exist" {
++  runc delete --force notexists
++  [ "$status" -eq 0 ]
++}
+-- 
+2.33.0
+

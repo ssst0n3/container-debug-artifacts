@@ -1,0 +1,46 @@
+From 20ce68df5145a8c56a53322fcf8c6a149d9df535 Mon Sep 17 00:00:00 2001
+From: zhangyu235 <zhangyu235@huawei.com>
+Date: Sun, 24 Feb 2019 17:49:09 +0800
+Subject: [PATCH 93/94] runc: fix error when check the init process
+
+reason:We shoule ensure the porcess is still the original init process
+using doesInitProcessExist(). But it could happen when the process exited
+just when we call function doesInitProcessExist(). Due to this reason,
+we shoule not return error in this case.
+
+Change-Id: If515af5beed73adf19b2c31eae919c5a39911a18
+Signed-off-by: zhangyu235 <zhangyu235@huawei.com>
+---
+ libcontainer/container_linux.go | 2 +-
+ script/runc-euleros.spec        | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 8100aca..5a3705e 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1411,7 +1411,7 @@ func (c *linuxContainer) refreshState() error {
+ func (c *linuxContainer) doesInitProcessExist(initPid int) (bool, error) {
+ 	startTime, err := system.GetProcessStartTime(initPid)
+ 	if err != nil {
+-		return false, newSystemErrorWithCausef(err, "getting init process %d start time", initPid)
++		return false, nil
+ 	}
+ 	if c.initProcessStartTime != startTime {
+ 		return false, nil
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 6e96326..09be036 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 22%{?dist}
++Release: 23%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

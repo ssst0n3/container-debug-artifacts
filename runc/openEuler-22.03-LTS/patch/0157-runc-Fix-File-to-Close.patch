@@ -1,0 +1,27 @@
+From 329422245586df752a020d3887cb0ee83cab7f59 Mon Sep 17 00:00:00 2001
+From: "hang.jiang" <hang.jiang@daocloud.io>
+Date: Fri, 1 Sep 2023 16:17:13 +0800
+Subject: [PATCH 1/4] Fix File to Close
+ 
+Reference:https://github.com/opencontainers/runc/commit/937ca107c3d22da77eb8e8030f2342253b980980
+ 
+Signed-off-by: hang.jiang <hang.jiang@daocloud.io>
+---
+ update.go | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/update.go b/update.go
+index 226a18a..46f7974 100644
+--- a/update.go
++++ b/update.go
+@@ -162,6 +162,7 @@ other options are ignored.
+ 				if err != nil {
+ 					return err
+ 				}
++				defer f.Close()
+ 			}
+ 			err = json.NewDecoder(f).Decode(&r)
+ 			if err != nil {
+-- 
+2.33.0
+

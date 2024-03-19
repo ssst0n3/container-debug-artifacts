@@ -1,0 +1,1490 @@
+From 32d2efc77f61fc7142e72b30e82aca8eeefc7c54 Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Sat, 23 Apr 2016 23:39:42 +1000
+Subject: [PATCH 05/94] runc: add support for rootless containers
+
+This enables the support for the rootless container mode. There are many
+restrictions on what rootless containers can do, so many different runC
+commands have been disabled:
+
+* runc checkpoint
+* runc events
+* runc pause
+* runc ps
+* runc restore
+* runc resume
+* runc update
+
+The following commands work:
+
+* runc create
+* runc delete
+* runc exec
+* runc kill
+* runc list
+* runc run
+* runc spec
+* runc state
+
+In addition, any specification options that imply joining cgroups have
+also been disabled. This is due to support for unprivileged subtree
+management not being available from Linux upstream.
+
+Change-Id: I5cfba61e3a3d7491f2b0bc00ccfd51b87684de8a
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ Makefile                                       |   2 +-
+ checkpoint.go                                  |   5 +
+ exec.go                                        |   3 -
+ libcontainer/configs/config.go                 |   3 +
+ libcontainer/configs/validate/rootless.go      | 117 +++++++++++++++
+ libcontainer/configs/validate/rootless_test.go | 195 +++++++++++++++++++++++++
+ libcontainer/configs/validate/validator.go     |   5 +
+ libcontainer/container_linux.go                |  49 +++++--
+ libcontainer/init_linux.go                     |  41 +++++-
+ libcontainer/message_linux.go                  |   1 +
+ libcontainer/nsenter/nsexec.c                  |  26 +++-
+ libcontainer/process_linux.go                  |  28 +++-
+ libcontainer/specconv/example.go               | 160 ++++++++++++++++++++
+ libcontainer/specconv/spec_linux.go            |  31 +++-
+ libcontainer/specconv/spec_linux_test.go       |  80 +++++++++-
+ list.go                                        |  19 ++-
+ ps.go                                          |   5 +
+ restore.go                                     |   6 +
+ spec.go                                        | 150 +------------------
+ utils.go                                       |   3 -
+ utils_linux.go                                 |   6 +
+ 21 files changed, 742 insertions(+), 193 deletions(-)
+ create mode 100644 libcontainer/configs/validate/rootless.go
+ create mode 100644 libcontainer/configs/validate/rootless_test.go
+ create mode 100644 libcontainer/specconv/example.go
+
+diff --git a/Makefile b/Makefile
+index b82884a..5fff515 100644
+--- a/Makefile
++++ b/Makefile
+@@ -4,7 +4,7 @@
+ 
+ SOURCES := $(shell find . 2>&1 | grep -E '.*\.(c|h|go)$$')
+ PREFIX := $(DESTDIR)/usr/local
+-BINDIR := $(PREFIX)/sbin
++BINDIR := $(PREFIX)/bin
+ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+ GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
+ RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
+diff --git a/checkpoint.go b/checkpoint.go
+index dd7704f..78977d7 100644
+--- a/checkpoint.go
++++ b/checkpoint.go
+@@ -39,6 +39,11 @@ checkpointed.`,
+ 		if err := checkArgs(context, 1, exactArgs); err != nil {
+ 			return err
+ 		}
++		// XXX: Currently this is untested with rootless containers.
++		if isRootless() {
++			return fmt.Errorf("runc checkpoint requires root")
++		}
++
+ 		container, err := getContainer(context)
+ 		if err != nil {
+ 			return err
+diff --git a/exec.go b/exec.go
+index 84061e6..22f2689 100644
+--- a/exec.go
++++ b/exec.go
+@@ -90,9 +90,6 @@ following will output a list of processes running in the container:
+ 		if err := checkArgs(context, 1, minArgs); err != nil {
+ 			return err
+ 		}
+-		if os.Geteuid() != 0 {
+-			return fmt.Errorf("runc should be run as root")
+-		}
+ 		if err := revisePidFile(context); err != nil {
+ 			return err
+ 		}
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 890cd7d..98f4b85 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -183,6 +183,9 @@ type Config struct {
+ 	// NoNewKeyring will not allocated a new session keyring for the container.  It will use the
+ 	// callers keyring in this case.
+ 	NoNewKeyring bool `json:"no_new_keyring"`
++
++	// Rootless specifies whether the container is a rootless container.
++	Rootless bool `json:"rootless"`
+ }
+ 
+ type Hooks struct {
+diff --git a/libcontainer/configs/validate/rootless.go b/libcontainer/configs/validate/rootless.go
+new file mode 100644
+index 0000000..1e83ced
+--- /dev/null
++++ b/libcontainer/configs/validate/rootless.go
+@@ -0,0 +1,117 @@
++package validate
++
++import (
++	"fmt"
++	"os"
++	"reflect"
++	"strings"
++
++	"github.com/opencontainers/runc/libcontainer/configs"
++)
++
++var (
++	geteuid = os.Geteuid
++	getegid = os.Getegid
++)
++
++func (v *ConfigValidator) rootless(config *configs.Config) error {
++	if err := rootlessMappings(config); err != nil {
++		return err
++	}
++	if err := rootlessMount(config); err != nil {
++		return err
++	}
++	// Currently, cgroups cannot effectively be used in rootless containers.
++	// The new cgroup namespace doesn't really help us either because it doesn't
++	// have nice interactions with the user namespace (we're working with upstream
++	// to fix this).
++	if err := rootlessCgroup(config); err != nil {
++		return err
++	}
++
++	// XXX: We currently can't verify the user config at all, because
++	//      configs.Config doesn't store the user-related configs. So this
++	//      has to be verified by setupUser() in init_linux.go.
++
++	return nil
++}
++
++func rootlessMappings(config *configs.Config) error {
++	rootuid, err := config.HostUID()
++	if err != nil {
++		return fmt.Errorf("failed to get root uid from uidMappings: %v", err)
++	}
++	if euid := geteuid(); euid != 0 {
++		if !config.Namespaces.Contains(configs.NEWUSER) {
++			return fmt.Errorf("rootless containers require user namespaces")
++		}
++		if rootuid != euid {
++			return fmt.Errorf("rootless containers cannot map container root to a different host user")
++		}
++	}
++
++	rootgid, err := config.HostGID()
++	if err != nil {
++		return fmt.Errorf("failed to get root gid from gidMappings: %v", err)
++	}
++
++	// Similar to the above test, we need to make sure that we aren't trying to
++	// map to a group ID that we don't have the right to be.
++	if rootgid != getegid() {
++		return fmt.Errorf("rootless containers cannot map container root to a different host group")
++	}
++
++	// We can only map one user and group inside a container (our own).
++	if len(config.UidMappings) != 1 || config.UidMappings[0].Size != 1 {
++		return fmt.Errorf("rootless containers cannot map more than one user")
++	}
++	if len(config.GidMappings) != 1 || config.GidMappings[0].Size != 1 {
++		return fmt.Errorf("rootless containers cannot map more than one group")
++	}
++
++	return nil
++}
++
++// cgroup verifies that the user isn't trying to set any cgroup limits or paths.
++func rootlessCgroup(config *configs.Config) error {
++	// Nothing set at all.
++	if config.Cgroups == nil || config.Cgroups.Resources == nil {
++		return nil
++	}
++
++	// Used for comparing to the zero value.
++	left := reflect.ValueOf(*config.Cgroups.Resources)
++	right := reflect.Zero(left.Type())
++
++	// This is all we need to do, since specconv won't add cgroup options in
++	// rootless mode.
++	if !reflect.DeepEqual(left.Interface(), right.Interface()) {
++		return fmt.Errorf("cannot specify resource limits in rootless container")
++	}
++
++	return nil
++}
++
++// mount verifies that the user isn't trying to set up any mounts they don't have
++// the rights to do. In addition, it makes sure that no mount has a `uid=` or
++// `gid=` option that doesn't resolve to root.
++func rootlessMount(config *configs.Config) error {
++	// XXX: We could whitelist allowed devices at this point, but I'm not
++	//      convinced that's a good idea. The kernel is the best arbiter of
++	//      access control.
++
++	for _, mount := range config.Mounts {
++		// Check that the options list doesn't contain any uid= or gid= entries
++		// that don't resolve to root.
++		for _, opt := range strings.Split(mount.Data, ",") {
++			if strings.HasPrefix(opt, "uid=") && opt != "uid=0" {
++				return fmt.Errorf("cannot specify uid= mount options in rootless containers where argument isn't 0")
++			}
++			if strings.HasPrefix(opt, "gid=") && opt != "gid=0" {
++				return fmt.Errorf("cannot specify gid= mount options in rootless containers where argument isn't 0")
++			}
++		}
++	}
++
++	return nil
++}
+diff --git a/libcontainer/configs/validate/rootless_test.go b/libcontainer/configs/validate/rootless_test.go
+new file mode 100644
+index 0000000..23d678d
+--- /dev/null
++++ b/libcontainer/configs/validate/rootless_test.go
+@@ -0,0 +1,195 @@
++package validate
++
++import (
++	"testing"
++
++	"github.com/opencontainers/runc/libcontainer/configs"
++)
++
++func init() {
++	geteuid = func() int { return 1337 }
++	getegid = func() int { return 7331 }
++}
++
++func rootlessConfig() *configs.Config {
++	return &configs.Config{
++		Rootfs:   "/var",
++		Rootless: true,
++		Namespaces: configs.Namespaces(
++			[]configs.Namespace{
++				{Type: configs.NEWUSER},
++			},
++		),
++		UidMappings: []configs.IDMap{
++			{
++				HostID:      geteuid(),
++				ContainerID: 0,
++				Size:        1,
++			},
++		},
++		GidMappings: []configs.IDMap{
++			{
++				HostID:      getegid(),
++				ContainerID: 0,
++				Size:        1,
++			},
++		},
++	}
++}
++
++func TestValidateRootless(t *testing.T) {
++	validator := New()
++
++	config := rootlessConfig()
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected error to not occur: %+v", err)
++	}
++}
++
++/* rootlessMappings() */
++
++func TestValidateRootlessUserns(t *testing.T) {
++	validator := New()
++
++	config := rootlessConfig()
++	config.Namespaces = nil
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if user namespaces not set")
++	}
++}
++
++func TestValidateRootlessMappingUid(t *testing.T) {
++	validator := New()
++
++	config := rootlessConfig()
++	config.UidMappings = nil
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if no uid mappings provided")
++	}
++
++	config = rootlessConfig()
++	config.UidMappings[0].HostID = geteuid() + 1
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if geteuid() != mapped uid")
++	}
++
++	config = rootlessConfig()
++	config.UidMappings[0].Size = 1024
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if more than one uid mapped")
++	}
++
++	config = rootlessConfig()
++	config.UidMappings = append(config.UidMappings, configs.IDMap{
++		HostID:      geteuid() + 1,
++		ContainerID: 0,
++		Size:        1,
++	})
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if more than one uid extent mapped")
++	}
++}
++
++func TestValidateRootlessMappingGid(t *testing.T) {
++	validator := New()
++
++	config := rootlessConfig()
++	config.GidMappings = nil
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if no gid mappings provided")
++	}
++
++	config = rootlessConfig()
++	config.GidMappings[0].HostID = getegid() + 1
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if getegid() != mapped gid")
++	}
++
++	config = rootlessConfig()
++	config.GidMappings[0].Size = 1024
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if more than one gid mapped")
++	}
++
++	config = rootlessConfig()
++	config.GidMappings = append(config.GidMappings, configs.IDMap{
++		HostID:      getegid() + 1,
++		ContainerID: 0,
++		Size:        1,
++	})
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if more than one gid extent mapped")
++	}
++}
++
++/* rootlessMount() */
++
++func TestValidateRootlessMountUid(t *testing.T) {
++	config := rootlessConfig()
++	validator := New()
++
++	config.Mounts = []*configs.Mount{
++		{
++			Source:      "devpts",
++			Destination: "/dev/pts",
++			Device:      "devpts",
++		},
++	}
++
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected error to not occur when uid= not set in mount options: %+v", err)
++	}
++
++	config.Mounts[0].Data = "uid=5"
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur when setting uid=5 in mount options")
++	}
++
++	config.Mounts[0].Data = "uid=0"
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected error to not occur when setting uid=0 in mount options: %+v", err)
++	}
++}
++
++func TestValidateRootlessMountGid(t *testing.T) {
++	config := rootlessConfig()
++	validator := New()
++
++	config.Mounts = []*configs.Mount{
++		{
++			Source:      "devpts",
++			Destination: "/dev/pts",
++			Device:      "devpts",
++		},
++	}
++
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected error to not occur when gid= not set in mount options: %+v", err)
++	}
++
++	config.Mounts[0].Data = "gid=5"
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur when setting gid=5 in mount options")
++	}
++
++	config.Mounts[0].Data = "gid=0"
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected error to not occur when setting gid=0 in mount options: %+v", err)
++	}
++}
++
++/* rootlessCgroup() */
++
++func TestValidateRootlessCgroup(t *testing.T) {
++	validator := New()
++
++	config := rootlessConfig()
++	config.Cgroups = &configs.Cgroup{
++		Resources: &configs.Resources{
++			PidsLimit: 1337,
++		},
++	}
++	if err := validator.Validate(config); err == nil {
++		t.Errorf("Expected error to occur if cgroup limits set")
++	}
++}
+diff --git a/libcontainer/configs/validate/validator.go b/libcontainer/configs/validate/validator.go
+index ecf8335..8284345 100644
+--- a/libcontainer/configs/validate/validator.go
++++ b/libcontainer/configs/validate/validator.go
+@@ -40,6 +40,11 @@ func (v *ConfigValidator) Validate(config *configs.Config) error {
+ 	if err := v.sysctl(config); err != nil {
+ 		return err
+ 	}
++	if config.Rootless {
++		if err := v.rootless(config); err != nil {
++			return err
++		}
++	}
+ 	return nil
+ }
+ 
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index d2e0e2b..372763a 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -51,6 +51,9 @@ type State struct {
+ 
+ 	// Platform specific fields below here
+ 
++	// Specifies if the container was started under the rootless mode.
++	Rootless bool `json:"rootless"`
++
+ 	// Path to all the cgroups setup for a container. Key is cgroup subsystem name
+ 	// with the value as the path.
+ 	CgroupPaths map[string]string `json:"cgroup_paths"`
+@@ -452,6 +455,7 @@ func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
+ 		PassedFilesCount: len(process.ExtraFiles),
+ 		ContainerId:      c.ID(),
+ 		NoNewPrivileges:  c.config.NoNewPrivileges,
++		Rootless:         c.config.Rootless,
+ 		AppArmorProfile:  c.config.AppArmorProfile,
+ 		ProcessLabel:     c.config.ProcessLabel,
+ 		Rlimits:          c.config.Rlimits,
+@@ -622,6 +626,13 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
+ 	c.m.Lock()
+ 	defer c.m.Unlock()
+ 
++	// TODO(avagin): Figure out how to make this work nicely. CRIU 2.0 has
++	//               support for doing unprivileged dumps, but the setup of
++	//               rootless containers might make this complicated.
++	if c.config.Rootless {
++		return fmt.Errorf("cannot checkpoint a rootless container")
++	}
++
+ 	if err := c.checkCriuVersion("1.5.2"); err != nil {
+ 		return err
+ 	}
+@@ -791,6 +802,13 @@ func (c *linuxContainer) restoreNetwork(req *criurpc.CriuReq, criuOpts *CriuOpts
+ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
+ 	c.m.Lock()
+ 	defer c.m.Unlock()
++
++	// TODO(avagin): Figure out how to make this work nicely. CRIU doesn't have
++	//               support for unprivileged restore at the moment.
++	if c.config.Rootless {
++		return fmt.Errorf("cannot restore a rootless container")
++	}
++
+ 	if err := c.checkCriuVersion("1.5.2"); err != nil {
+ 		return err
+ 	}
+@@ -918,6 +936,7 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
+ }
+ 
+ func (c *linuxContainer) criuApplyCgroups(pid int, req *criurpc.CriuReq) error {
++	// XXX: Do we need to deal with this case? AFAIK criu still requires root.
+ 	if err := c.cgroupManager.Apply(pid); err != nil {
+ 		return err
+ 	}
+@@ -1319,6 +1338,7 @@ func (c *linuxContainer) currentState() (*State, error) {
+ 			InitProcessStartTime: startTime,
+ 			Created:              c.created,
+ 		},
++		Rootless:            c.config.Rootless,
+ 		CgroupPaths:         c.cgroupManager.GetPaths(),
+ 		NamespacePaths:      make(map[configs.NamespaceType]string),
+ 		ExternalDescriptors: externalDescriptors,
+@@ -1446,16 +1466,19 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
+ 				Type:  GidmapAttr,
+ 				Value: b,
+ 			})
+-			// check if we have CAP_SETGID to setgroup properly
+-			pid, err := capability.NewPid(os.Getpid())
+-			if err != nil {
+-				return nil, err
+-			}
+-			if !pid.Get(capability.EFFECTIVE, capability.CAP_SETGID) {
+-				r.AddData(&Boolmsg{
+-					Type:  SetgroupAttr,
+-					Value: true,
+-				})
++			// The following only applies if we are root.
++			if !c.config.Rootless {
++				// check if we have CAP_SETGID to setgroup properly
++				pid, err := capability.NewPid(os.Getpid())
++				if err != nil {
++					return nil, err
++				}
++				if !pid.Get(capability.EFFECTIVE, capability.CAP_SETGID) {
++					r.AddData(&Boolmsg{
++						Type:  SetgroupAttr,
++						Value: true,
++					})
++				}
+ 			}
+ 		}
+ 	}
+@@ -1466,5 +1489,11 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
+ 		Value: []byte(fmt.Sprintf("%d", c.config.OomScoreAdj)),
+ 	})
+ 
++	// write rootless
++	r.AddData(&Boolmsg{
++		Type:  RootlessAttr,
++		Value: c.config.Rootless,
++	})
++
+ 	return bytes.NewReader(r.Serialize()), nil
+ }
+diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
+index 0f5d412..1187835 100644
+--- a/libcontainer/init_linux.go
++++ b/libcontainer/init_linux.go
+@@ -58,6 +58,7 @@ type initConfig struct {
+ 	ContainerId      string                `json:"containerid"`
+ 	Rlimits          []configs.Rlimit      `json:"rlimits"`
+ 	CreateConsole    bool                  `json:"create_console"`
++	Rootless         bool                  `json:"rootless"`
+ }
+ 
+ type initer interface {
+@@ -229,18 +230,21 @@ func syncParentHooks(pipe io.ReadWriter) error {
+ func setupUser(config *initConfig) error {
+ 	// Set up defaults.
+ 	defaultExecUser := user.ExecUser{
+-		Uid:  syscall.Getuid(),
+-		Gid:  syscall.Getgid(),
++		Uid:  0,
++		Gid:  0,
+ 		Home: "/",
+ 	}
++
+ 	passwdPath, err := user.GetPasswdPath()
+ 	if err != nil {
+ 		return err
+ 	}
++
+ 	groupPath, err := user.GetGroupPath()
+ 	if err != nil {
+ 		return err
+ 	}
++
+ 	execUser, err := user.GetExecUserPath(config.User, &defaultExecUser, passwdPath, groupPath)
+ 	if err != nil {
+ 		return err
+@@ -253,22 +257,49 @@ func setupUser(config *initConfig) error {
+ 			return err
+ 		}
+ 	}
++
++	if config.Rootless {
++		if execUser.Uid != 0 {
++			return fmt.Errorf("cannot run as a non-root user in a rootless container")
++		}
++
++		if execUser.Gid != 0 {
++			return fmt.Errorf("cannot run as a non-root group in a rootless container")
++		}
++
++		// We cannot set any additional groups in a rootless container and thus we
++		// bail if the user asked us to do so. TODO: We currently can't do this
++		// earlier, but if libcontainer.Process.User was typesafe this might work.
++		if len(addGroups) > 0 {
++			return fmt.Errorf("cannot set any additional groups in a rootless container")
++		}
++	}
++
+ 	// before we change to the container's user make sure that the processes STDIO
+ 	// is correctly owned by the user that we are switching to.
+ 	if err := fixStdioPermissions(execUser); err != nil {
+ 		return err
+ 	}
+-	suppGroups := append(execUser.Sgids, addGroups...)
+-	if err := syscall.Setgroups(suppGroups); err != nil {
+-		return err
++
++	// This isn't allowed in an unprivileged user namespace since Linux 3.19.
++	// There's nothing we can do about /etc/group entries, so we silently
++	// ignore setting groups here (since the user didn't explicitly ask us to
++	// set the group).
++	if !config.Rootless {
++		suppGroups := append(execUser.Sgids, addGroups...)
++		if err := syscall.Setgroups(suppGroups); err != nil {
++			return err
++		}
+ 	}
+ 
+ 	if err := system.Setgid(execUser.Gid); err != nil {
+ 		return err
+ 	}
++
+ 	if err := system.Setuid(execUser.Uid); err != nil {
+ 		return err
+ 	}
++
+ 	// if we didn't get HOME already, set it based on the user's HOME
+ 	if envHome := os.Getenv("HOME"); envHome == "" {
+ 		if err := os.Setenv("HOME", execUser.Home); err != nil {
+diff --git a/libcontainer/message_linux.go b/libcontainer/message_linux.go
+index 321d664..bc725a2 100644
+--- a/libcontainer/message_linux.go
++++ b/libcontainer/message_linux.go
+@@ -18,6 +18,7 @@ const (
+ 	GidmapAttr      uint16 = 27284
+ 	SetgroupAttr    uint16 = 27285
+ 	OomScoreAdjAttr uint16 = 27286
++	RootlessAttr    uint16 = 27287
+ 
+ 	// When syscall.NLA_HDRLEN is in gccgo, take this out.
+ 	syscall_NLA_HDRLEN = (syscall.SizeofNlAttr + syscall.NLA_ALIGNTO - 1) & ^(syscall.NLA_ALIGNTO - 1)
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 9630206..0ad6883 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -72,6 +72,7 @@ struct nlconfig_t {
+ 	char *namespaces;
+ 	size_t namespaces_len;
+ 	uint8_t is_setgroup;
++	uint8_t is_rootless;
+ 	char *oom_score_adj;
+ 	size_t oom_score_adj_len;
+ };
+@@ -87,6 +88,7 @@ struct nlconfig_t {
+ #define GIDMAP_ATTR			27284
+ #define SETGROUP_ATTR		27285
+ #define OOM_SCORE_ADJ_ATTR	27286
++#define ROOTLESS_ATTR	    27287
+ 
+ /*
+  * Use the raw syscall for versions of glibc which don't include a function for
+@@ -175,6 +177,7 @@ static void update_setgroups(int pid, enum policy_t setgroup)
+ 			policy = "deny";
+ 			break;
+ 		case SETGROUPS_DEFAULT:
++		default:
+ 			/* Nothing to do. */
+ 			return;
+ 	}
+@@ -329,6 +332,9 @@ static void nl_parse(int fd, struct nlconfig_t *config)
+ 		case CLONE_FLAGS_ATTR:
+ 			config->cloneflags = readint32(current);
+ 			break;
++		case ROOTLESS_ATTR:
++			config->is_rootless = readint8(current);
++			break;
+ 		case OOM_SCORE_ADJ_ATTR:
+ 			config->oom_score_adj = current;
+ 			config->oom_score_adj_len = payload_len;
+@@ -574,9 +580,21 @@ void nsexec(void)
+ 
+ 					exit(ret);
+ 				case SYNC_USERMAP_PLS:
+-					/* Enable setgroups(2) if we've been asked to. */
++					/*
++					 * Enable setgroups(2) if we've been asked to. But we also
++					 * have to explicitly disable setgroups(2) if we're
++					 * creating a rootless container (this is required since
++					 * Linux 3.19).
++					 */
++					if (config.is_rootless && config.is_setgroup) {
++						kill(child, SIGKILL);
++						bail("cannot allow setgroup in an unprivileged user namespace setup");
++					}
++
+ 					if (config.is_setgroup)
+ 						update_setgroups(child, SETGROUPS_ALLOW);
++					if (config.is_rootless)
++						update_setgroups(child, SETGROUPS_DENY);
+ 
+ 					/* Set up mappings. */
+ 					update_uidmap(child, config.uidmap, config.uidmap_len);
+@@ -818,8 +836,10 @@ void nsexec(void)
+ 			if (setgid(0) < 0)
+ 				bail("setgid failed");
+ 
+-			if (setgroups(0, NULL) < 0)
+-				bail("setgroups failed");
++			if (!config.is_rootless && config.is_setgroup) {
++				if (setgroups(0, NULL) < 0)
++					bail("setgroups failed");
++			}
+ 
+ 			s = SYNC_CHILD_READY;
+ 			if (write(syncfd, &s, sizeof(s)) != sizeof(s))
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index c60f473..e8b7506 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -80,7 +80,8 @@ func (p *setnsProcess) start() (err error) {
+ 	if err = p.execSetns(); err != nil {
+ 		return newSystemErrorWithCause(err, "executing setns process")
+ 	}
+-	if len(p.cgroupPaths) > 0 {
++	// We can't join cgroups if we're in a rootless container.
++	if !p.config.Rootless && len(p.cgroupPaths) > 0 {
+ 		if err := cgroups.EnterPid(p.cgroupPaths, p.pid()); err != nil {
+ 			return newSystemErrorWithCausef(err, "adding pid %d to cgroups", p.pid())
+ 		}
+@@ -253,13 +254,15 @@ func (p *initProcess) start() error {
+ 		return newSystemErrorWithCausef(err, "getting pipe fds for pid %d", p.pid())
+ 	}
+ 	p.setExternalDescriptors(fds)
+-	// Do this before syncing with child so that no children
+-	// can escape the cgroup
+-	if err := p.manager.Apply(p.pid()); err != nil {
+-		return newSystemErrorWithCause(err, "applying cgroup configuration for process")
++	if !p.container.config.Rootless {
++		// Do this before syncing with child so that no children can escape the
++		// cgroup. We can't do this if we're not running as root.
++		if err := p.manager.Apply(p.pid()); err != nil {
++			return newSystemErrorWithCause(err, "applying cgroup configuration for process")
++		}
+ 	}
+ 	defer func() {
+-		if err != nil {
++		if err != nil && !p.container.config.Rootless {
+ 			// TODO: should not be the responsibility to call here
+ 			p.manager.Destroy()
+ 		}
+@@ -278,8 +281,11 @@ func (p *initProcess) start() error {
+ 	ierr := parseSync(p.parentPipe, func(sync *syncT) error {
+ 		switch sync.Type {
+ 		case procReady:
+-			if err := p.manager.Set(p.config.Config); err != nil {
+-				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
++			// We can't set cgroups if we're in a rootless container.
++			if !p.container.config.Rootless {
++				if err := p.manager.Set(p.config.Config); err != nil {
++					return newSystemErrorWithCause(err, "setting cgroup config for ready process")
++				}
+ 			}
+ 			// set rlimits, this has to be done here because we lose permissions
+ 			// to raise the limits once we enter a user-namespace
+@@ -424,6 +430,12 @@ func getPipeFds(pid int) ([]string, error) {
+ 		f := filepath.Join(dirPath, strconv.Itoa(i))
+ 		target, err := os.Readlink(f)
+ 		if err != nil {
++			// Ignore permission errors, for rootless containers and other
++			// non-dumpable processes. if we can't get the fd for a particular
++			// file, there's not much we can do.
++			if os.IsPermission(err) {
++				continue
++			}
+ 			return fds, err
+ 		}
+ 		fds[i] = target
+diff --git a/libcontainer/specconv/example.go b/libcontainer/specconv/example.go
+new file mode 100644
+index 0000000..44fad97
+--- /dev/null
++++ b/libcontainer/specconv/example.go
+@@ -0,0 +1,160 @@
++package specconv
++
++import (
++	"runtime"
++
++	"github.com/opencontainers/runtime-spec/specs-go"
++)
++
++func sPtr(s string) *string { return &s }
++
++// ExampleSpec returns an example spec file, with many options set so a user
++// can see what a standard spec file looks like.
++func ExampleSpec() *specs.Spec {
++	return &specs.Spec{
++		Version: specs.Version,
++		Platform: specs.Platform{
++			OS:   runtime.GOOS,
++			Arch: runtime.GOARCH,
++		},
++		Root: specs.Root{
++			Path:     "rootfs",
++			Readonly: true,
++		},
++		Process: specs.Process{
++			Terminal: true,
++			User:     specs.User{},
++			Args: []string{
++				"sh",
++			},
++			Env: []string{
++				"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
++				"TERM=xterm",
++			},
++			Cwd:             "/",
++			NoNewPrivileges: true,
++			Capabilities: &specs.LinuxCapabilities{
++				Bounding: []string{
++					"CAP_AUDIT_WRITE",
++					"CAP_KILL",
++					"CAP_NET_BIND_SERVICE",
++				},
++				Permitted: []string{
++					"CAP_AUDIT_WRITE",
++					"CAP_KILL",
++					"CAP_NET_BIND_SERVICE",
++				},
++				Inheritable: []string{
++					"CAP_AUDIT_WRITE",
++					"CAP_KILL",
++					"CAP_NET_BIND_SERVICE",
++				},
++				Ambient: []string{
++					"CAP_AUDIT_WRITE",
++					"CAP_KILL",
++					"CAP_NET_BIND_SERVICE",
++				},
++				Effective: []string{
++					"CAP_AUDIT_WRITE",
++					"CAP_KILL",
++					"CAP_NET_BIND_SERVICE",
++				},
++			},
++			Rlimits: []specs.LinuxRlimit{
++				{
++					Type: "RLIMIT_NOFILE",
++					Hard: uint64(1024),
++					Soft: uint64(1024),
++				},
++			},
++		},
++		Hostname: "runc",
++		Mounts: []specs.Mount{
++			{
++				Destination: "/proc",
++				Type:        "proc",
++				Source:      "proc",
++				Options:     nil,
++			},
++			{
++				Destination: "/dev",
++				Type:        "tmpfs",
++				Source:      "tmpfs",
++				Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536k"},
++			},
++			{
++				Destination: "/dev/pts",
++				Type:        "devpts",
++				Source:      "devpts",
++				Options:     []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620", "gid=5"},
++			},
++			{
++				Destination: "/dev/shm",
++				Type:        "tmpfs",
++				Source:      "shm",
++				Options:     []string{"nosuid", "noexec", "nodev", "mode=1777", "size=65536k"},
++			},
++			{
++				Destination: "/dev/mqueue",
++				Type:        "mqueue",
++				Source:      "mqueue",
++				Options:     []string{"nosuid", "noexec", "nodev"},
++			},
++			{
++				Destination: "/sys",
++				Type:        "sysfs",
++				Source:      "sysfs",
++				Options:     []string{"nosuid", "noexec", "nodev", "ro"},
++			},
++			{
++				Destination: "/sys/fs/cgroup",
++				Type:        "cgroup",
++				Source:      "cgroup",
++				Options:     []string{"nosuid", "noexec", "nodev", "relatime", "ro"},
++			},
++		},
++		Linux: &specs.Linux{
++			MaskedPaths: []string{
++				"/proc/kcore",
++				"/proc/latency_stats",
++				"/proc/timer_list",
++				"/proc/timer_stats",
++				"/proc/sched_debug",
++				"/sys/firmware",
++			},
++			ReadonlyPaths: []string{
++				"/proc/asound",
++				"/proc/bus",
++				"/proc/fs",
++				"/proc/irq",
++				"/proc/sys",
++				"/proc/sysrq-trigger",
++			},
++			Resources: &specs.LinuxResources{
++				Devices: []specs.LinuxDeviceCgroup{
++					{
++						Allow:  false,
++						Access: "rwm",
++					},
++				},
++			},
++			Namespaces: []specs.LinuxNamespace{
++				{
++					Type: "pid",
++				},
++				{
++					Type: "network",
++				},
++				{
++					Type: "ipc",
++				},
++				{
++					Type: "uts",
++				},
++				{
++					Type: "mount",
++				},
++			},
++		},
++	}
++}
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index 52b3ca1..346b268 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -145,6 +145,7 @@ type CreateOpts struct {
+ 	NoPivotRoot      bool
+ 	NoNewKeyring     bool
+ 	Spec             *specs.Spec
++	Rootless         bool
+ }
+ 
+ // CreateLibcontainerConfig creates a new libcontainer configuration from a
+@@ -175,6 +176,7 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 		Hostname:     spec.Hostname,
+ 		Labels:       append(labels, fmt.Sprintf("bundle=%s", cwd)),
+ 		NoNewKeyring: opts.NoNewKeyring,
++		Rootless:     opts.Rootless,
+ 	}
+ 
+ 	exists := false
+@@ -208,7 +210,7 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 	if err := setupUserNamespace(spec, config); err != nil {
+ 		return nil, err
+ 	}
+-	c, err := createCgroupConfig(opts.CgroupName, opts.UseSystemdCgroup, spec)
++	c, err := createCgroupConfig(opts)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -264,8 +266,14 @@ func createLibcontainerMount(cwd string, m specs.Mount) *configs.Mount {
+ 	}
+ }
+ 
+-func createCgroupConfig(name string, useSystemdCgroup bool, spec *specs.Spec) (*configs.Cgroup, error) {
+-	var myCgroupPath string
++func createCgroupConfig(opts *CreateOpts) (*configs.Cgroup, error) {
++	var (
++		myCgroupPath string
++
++		spec             = opts.Spec
++		useSystemdCgroup = opts.UseSystemdCgroup
++		name             = opts.CgroupName
++	)
+ 
+ 	c := &configs.Cgroup{
+ 		Resources: &configs.Resources{},
+@@ -301,9 +309,14 @@ func createCgroupConfig(name string, useSystemdCgroup bool, spec *specs.Spec) (*
+ 		c.Path = myCgroupPath
+ 	}
+ 
+-	c.Resources.AllowedDevices = allowedDevices
+-	if spec.Linux == nil {
+-		return c, nil
++	// In rootless containers, any attempt to make cgroup changes will fail.
++	// libcontainer will validate this and we shouldn't add any cgroup options
++	// the user didn't specify.
++	if !opts.Rootless {
++		c.Resources.AllowedDevices = allowedDevices
++		if spec.Linux == nil {
++			return c, nil
++		}
+ 	}
+ 	r := spec.Linux.Resources
+ 	if r == nil {
+@@ -340,8 +353,10 @@ func createCgroupConfig(name string, useSystemdCgroup bool, spec *specs.Spec) (*
+ 		}
+ 		c.Resources.Devices = append(c.Resources.Devices, dd)
+ 	}
+-	// append the default allowed devices to the end of the list
+-	c.Resources.Devices = append(c.Resources.Devices, allowedDevices...)
++	if !opts.Rootless {
++		// append the default allowed devices to the end of the list
++		c.Resources.Devices = append(c.Resources.Devices, allowedDevices...)
++	}
+ 	if r.Memory != nil {
+ 		if r.Memory.Limit != nil {
+ 			c.Resources.Memory = *r.Memory.Limit
+diff --git a/libcontainer/specconv/spec_linux_test.go b/libcontainer/specconv/spec_linux_test.go
+index baa2638..741fae6 100644
+--- a/libcontainer/specconv/spec_linux_test.go
++++ b/libcontainer/specconv/spec_linux_test.go
+@@ -3,8 +3,10 @@
+ package specconv
+ 
+ import (
++	"os"
+ 	"testing"
+ 
++	"github.com/opencontainers/runc/libcontainer/configs/validate"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+ )
+ 
+@@ -16,7 +18,13 @@ func TestLinuxCgroupsPathSpecified(t *testing.T) {
+ 		CgroupsPath: cgroupsPath,
+ 	}
+ 
+-	cgroup, err := createCgroupConfig("ContainerID", false, spec)
++	opts := &CreateOpts{
++		CgroupName:       "ContainerID",
++		UseSystemdCgroup: false,
++		Spec:             spec,
++	}
++
++	cgroup, err := createCgroupConfig(opts)
+ 	if err != nil {
+ 		t.Errorf("Couldn't create Cgroup config: %v", err)
+ 	}
+@@ -28,8 +36,13 @@ func TestLinuxCgroupsPathSpecified(t *testing.T) {
+ 
+ func TestLinuxCgroupsPathNotSpecified(t *testing.T) {
+ 	spec := &specs.Spec{}
++	opts := &CreateOpts{
++		CgroupName:       "ContainerID",
++		UseSystemdCgroup: false,
++		Spec:             spec,
++	}
+ 
+-	cgroup, err := createCgroupConfig("ContainerID", false, spec)
++	cgroup, err := createCgroupConfig(opts)
+ 	if err != nil {
+ 		t.Errorf("Couldn't create Cgroup config: %v", err)
+ 	}
+@@ -39,6 +52,26 @@ func TestLinuxCgroupsPathNotSpecified(t *testing.T) {
+ 	}
+ }
+ 
++func TestSpecconvExampleValidate(t *testing.T) {
++	spec := ExampleSpec()
++	spec.Root.Path = "/"
++	opts := &CreateOpts{
++		CgroupName:       "ContainerID",
++		UseSystemdCgroup: false,
++		Spec:             spec,
++	}
++
++	config, err := CreateLibcontainerConfig(opts)
++	if err != nil {
++		t.Errorf("Couldn't create libcontainer config: %v", err)
++	}
++
++	validator := validate.New()
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected specconv to produce valid container config: %v", err)
++	}
++}
++
+ func TestDupNamespaces(t *testing.T) {
+ 	spec := &specs.Spec{
+ 		Linux: &specs.Linux{
+@@ -62,3 +95,46 @@ func TestDupNamespaces(t *testing.T) {
+ 		t.Errorf("Duplicated namespaces should be forbidden")
+ 	}
+ }
++
++func TestRootlessSpecconvValidate(t *testing.T) {
++	spec := &specs.Spec{
++		Linux: specs.Linux{
++			Namespaces: []specs.Namespace{
++				{
++					Type: specs.UserNamespace,
++				},
++			},
++			UIDMappings: []specs.IDMapping{
++				{
++					HostID:      uint32(os.Geteuid()),
++					ContainerID: 0,
++					Size:        1,
++				},
++			},
++			GIDMappings: []specs.IDMapping{
++				{
++					HostID:      uint32(os.Getegid()),
++					ContainerID: 0,
++					Size:        1,
++				},
++			},
++		},
++	}
++
++	opts := &CreateOpts{
++		CgroupName:       "ContainerID",
++		UseSystemdCgroup: false,
++		Spec:             spec,
++		Rootless:         true,
++	}
++
++	config, err := CreateLibcontainerConfig(opts)
++	if err != nil {
++		t.Errorf("Couldn't create libcontainer config: %v", err)
++	}
++
++	validator := validate.New()
++	if err := validator.Validate(config); err != nil {
++		t.Errorf("Expected specconv to produce valid rootless container config: %v", err)
++	}
++}
+diff --git a/list.go b/list.go
+index c7550a2..1c3b9aa 100644
+--- a/list.go
++++ b/list.go
+@@ -7,12 +7,14 @@ import (
+ 	"io/ioutil"
+ 	"os"
+ 	"path/filepath"
++	"syscall"
+ 	"text/tabwriter"
+ 	"time"
+ 
+ 	"encoding/json"
+ 
+ 	"github.com/opencontainers/runc/libcontainer"
++	"github.com/opencontainers/runc/libcontainer/user"
+ 	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"github.com/urfave/cli"
+ )
+@@ -38,6 +40,8 @@ type containerState struct {
+ 	Created time.Time `json:"created"`
+ 	// Annotations is the user defined annotations added to the config.
+ 	Annotations map[string]string `json:"annotations,omitempty"`
++	// The owner of the state directory (the owner of the container).
++	Owner string `json:"owner"`
+ }
+ 
+ var listCommand = cli.Command{
+@@ -85,14 +89,15 @@ To list containers created using a non-default value for "--root":
+ 		switch context.String("format") {
+ 		case "table":
+ 			w := tabwriter.NewWriter(os.Stdout, 12, 1, 3, ' ', 0)
+-			fmt.Fprint(w, "ID\tPID\tSTATUS\tBUNDLE\tCREATED\n")
++			fmt.Fprint(w, "ID\tPID\tSTATUS\tBUNDLE\tCREATED\tOWNER\n")
+ 			for _, item := range s {
+-				fmt.Fprintf(w, "%s\t%d\t%s\t%s\t%s\n",
++				fmt.Fprintf(w, "%s\t%d\t%s\t%s\t%s\t%s\n",
+ 					item.ID,
+ 					item.InitProcessPid,
+ 					item.Status,
+ 					item.Bundle,
+-					item.Created.Format(time.RFC3339Nano))
++					item.Created.Format(time.RFC3339Nano),
++					item.Owner)
+ 			}
+ 			if err := w.Flush(); err != nil {
+ 				return err
+@@ -126,6 +131,13 @@ func getContainers(context *cli.Context) ([]containerState, error) {
+ 	var s []containerState
+ 	for _, item := range list {
+ 		if item.IsDir() {
++			// This cast is safe on Linux.
++			stat := item.Sys().(*syscall.Stat_t)
++			owner, err := user.LookupUid(int(stat.Uid))
++			if err != nil {
++				owner.Name = string(stat.Uid)
++			}
++
+ 			container, err := factory.Load(item.Name())
+ 			if err != nil {
+ 				fmt.Fprintf(os.Stderr, "load container %s: %v\n", item.Name(), err)
+@@ -155,6 +167,7 @@ func getContainers(context *cli.Context) ([]containerState, error) {
+ 				Rootfs:         state.BaseState.Config.Rootfs,
+ 				Created:        state.BaseState.Created,
+ 				Annotations:    annotations,
++				Owner:          owner.Name,
+ 			})
+ 		}
+ 	}
+diff --git a/ps.go b/ps.go
+index b8a1b11..6e0c737 100644
+--- a/ps.go
++++ b/ps.go
+@@ -28,6 +28,11 @@ var psCommand = cli.Command{
+ 		if err := checkArgs(context, 1, minArgs); err != nil {
+ 			return err
+ 		}
++		// XXX: Currently not supported with rootless containers.
++		if isRootless() {
++			return fmt.Errorf("runc ps requires root")
++		}
++
+ 		container, err := getContainer(context)
+ 		if err != nil {
+ 			return err
+diff --git a/restore.go b/restore.go
+index afc6046..06f635f 100644
+--- a/restore.go
++++ b/restore.go
+@@ -3,6 +3,7 @@
+ package main
+ 
+ import (
++	"fmt"
+ 	"os"
+ 	"syscall"
+ 
+@@ -86,6 +87,11 @@ using the runc checkpoint command.`,
+ 		if err := checkArgs(context, 1, exactArgs); err != nil {
+ 			return err
+ 		}
++		// XXX: Currently this is untested with rootless containers.
++		if isRootless() {
++			return fmt.Errorf("runc restore requires root")
++		}
++
+ 		imagePath := context.String("image-path")
+ 		id := context.Args().First()
+ 		if id == "" {
+diff --git a/spec.go b/spec.go
+index 1b55c6b..d7df312 100644
+--- a/spec.go
++++ b/spec.go
+@@ -10,6 +10,7 @@ import (
+ 	"runtime"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/specconv"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+ 	"github.com/urfave/cli"
+ )
+@@ -68,152 +69,7 @@ container on your host.`,
+ 		if err := checkArgs(context, 0, exactArgs); err != nil {
+ 			return err
+ 		}
+-		spec := specs.Spec{
+-			Version: specs.Version,
+-			Platform: specs.Platform{
+-				OS:   runtime.GOOS,
+-				Arch: runtime.GOARCH,
+-			},
+-			Root: specs.Root{
+-				Path:     "rootfs",
+-				Readonly: true,
+-			},
+-			Process: specs.Process{
+-				Terminal: true,
+-				User:     specs.User{},
+-				Args: []string{
+-					"sh",
+-				},
+-				Env: []string{
+-					"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+-					"TERM=xterm",
+-				},
+-				Cwd:             "/",
+-				NoNewPrivileges: true,
+-				Capabilities: &specs.LinuxCapabilities{
+-					Bounding: []string{
+-						"CAP_AUDIT_WRITE",
+-						"CAP_KILL",
+-						"CAP_NET_BIND_SERVICE",
+-					},
+-					Permitted: []string{
+-						"CAP_AUDIT_WRITE",
+-						"CAP_KILL",
+-						"CAP_NET_BIND_SERVICE",
+-					},
+-					Inheritable: []string{
+-						"CAP_AUDIT_WRITE",
+-						"CAP_KILL",
+-						"CAP_NET_BIND_SERVICE",
+-					},
+-					Ambient: []string{
+-						"CAP_AUDIT_WRITE",
+-						"CAP_KILL",
+-						"CAP_NET_BIND_SERVICE",
+-					},
+-					Effective: []string{
+-						"CAP_AUDIT_WRITE",
+-						"CAP_KILL",
+-						"CAP_NET_BIND_SERVICE",
+-					},
+-				},
+-				Rlimits: []specs.LinuxRlimit{
+-					{
+-						Type: "RLIMIT_NOFILE",
+-						Hard: uint64(1024),
+-						Soft: uint64(1024),
+-					},
+-				},
+-			},
+-			Hostname: "runc",
+-			Mounts: []specs.Mount{
+-				{
+-					Destination: "/proc",
+-					Type:        "proc",
+-					Source:      "proc",
+-					Options:     nil,
+-				},
+-				{
+-					Destination: "/dev",
+-					Type:        "tmpfs",
+-					Source:      "tmpfs",
+-					Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536k"},
+-				},
+-				{
+-					Destination: "/dev/pts",
+-					Type:        "devpts",
+-					Source:      "devpts",
+-					Options:     []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620", "gid=5"},
+-				},
+-				{
+-					Destination: "/dev/shm",
+-					Type:        "tmpfs",
+-					Source:      "shm",
+-					Options:     []string{"nosuid", "noexec", "nodev", "mode=1777", "size=65536k"},
+-				},
+-				{
+-					Destination: "/dev/mqueue",
+-					Type:        "mqueue",
+-					Source:      "mqueue",
+-					Options:     []string{"nosuid", "noexec", "nodev"},
+-				},
+-				{
+-					Destination: "/sys",
+-					Type:        "sysfs",
+-					Source:      "sysfs",
+-					Options:     []string{"nosuid", "noexec", "nodev", "ro"},
+-				},
+-				{
+-					Destination: "/sys/fs/cgroup",
+-					Type:        "cgroup",
+-					Source:      "cgroup",
+-					Options:     []string{"nosuid", "noexec", "nodev", "relatime", "ro"},
+-				},
+-			},
+-			Linux: &specs.Linux{
+-				MaskedPaths: []string{
+-					"/proc/kcore",
+-					"/proc/latency_stats",
+-					"/proc/timer_list",
+-					"/proc/timer_stats",
+-					"/proc/sched_debug",
+-					"/sys/firmware",
+-				},
+-				ReadonlyPaths: []string{
+-					"/proc/asound",
+-					"/proc/bus",
+-					"/proc/fs",
+-					"/proc/irq",
+-					"/proc/sys",
+-					"/proc/sysrq-trigger",
+-				},
+-				Resources: &specs.LinuxResources{
+-					Devices: []specs.LinuxDeviceCgroup{
+-						{
+-							Allow:  false,
+-							Access: "rwm",
+-						},
+-					},
+-				},
+-				Namespaces: []specs.LinuxNamespace{
+-					{
+-						Type: "pid",
+-					},
+-					{
+-						Type: "network",
+-					},
+-					{
+-						Type: "ipc",
+-					},
+-					{
+-						Type: "uts",
+-					},
+-					{
+-						Type: "mount",
+-					},
+-				},
+-			},
+-		}
++		spec := specconv.ExampleSpec()
+ 
+ 		checkNoFile := func(name string) error {
+ 			_, err := os.Stat(name)
+@@ -234,7 +90,7 @@ container on your host.`,
+ 		if err := checkNoFile(specConfig); err != nil {
+ 			return err
+ 		}
+-		data, err := json.MarshalIndent(&spec, "", "\t")
++		data, err := json.MarshalIndent(spec, "", "\t")
+ 		if err != nil {
+ 			return err
+ 		}
+diff --git a/utils.go b/utils.go
+index 1286fd6..98f93a4 100644
+--- a/utils.go
++++ b/utils.go
+@@ -63,9 +63,6 @@ func setupSpec(context *cli.Context) (*specs.Spec, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if os.Geteuid() != 0 {
+-		return nil, fmt.Errorf("runc should be run as root")
+-	}
+ 	return spec, nil
+ }
+ 
+diff --git a/utils_linux.go b/utils_linux.go
+index dcf156c..767015e 100644
+--- a/utils_linux.go
++++ b/utils_linux.go
+@@ -186,6 +186,11 @@ func createPidFile(path string, process *libcontainer.Process) error {
+ 	return os.Rename(tmpName, path)
+ }
+ 
++// XXX: Currently we autodetect rootless mode.
++func isRootless() bool {
++	return os.Geteuid() != 0
++}
++
+ func createContainer(context *cli.Context, id string, spec *specs.Spec) (libcontainer.Container, error) {
+ 	config, err := specconv.CreateLibcontainerConfig(&specconv.CreateOpts{
+ 		CgroupName:       id,
+@@ -193,6 +198,7 @@ func createContainer(context *cli.Context, id string, spec *specs.Spec) (libcont
+ 		NoPivotRoot:      context.Bool("no-pivot"),
+ 		NoNewKeyring:     context.Bool("no-new-keyring"),
+ 		Spec:             spec,
++		Rootless:         isRootless(),
+ 	})
+ 	if err != nil {
+ 		return nil, err
+-- 
+2.7.4.3
+

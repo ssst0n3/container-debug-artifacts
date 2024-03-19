@@ -1,0 +1,28 @@
+From b14e625669a92cf838c8743ecd9ee5bc278b54fe Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Fri, 6 Sep 2019 21:32:31 +0800
+Subject: [PATCH] runc: add lisence
+
+reason:add lisence
+
+Change-Id: I7936f07063082ac2b00bf8175d2ab8a5144f6bec
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/fs/files.go | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/libcontainer/cgroups/fs/files.go b/libcontainer/cgroups/fs/files.go
+index d39b610..3315cda 100644
+--- a/libcontainer/cgroups/fs/files.go
++++ b/libcontainer/cgroups/fs/files.go
+@@ -1,5 +1,7 @@
+ /*
+ Copyright (c) Huawei Technologies Co., Ltd. 2017-2019. All rights reserved.
++Use of this source code is governed by Apache-2.0
++license that can be found in the LICENSE file.
+ Description: files cgroup common functions
+ Author: yangshukui
+ Create: 2017-09-18
+-- 
+1.8.3.1
+

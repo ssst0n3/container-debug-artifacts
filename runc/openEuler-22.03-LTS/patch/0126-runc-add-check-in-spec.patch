@@ -1,0 +1,27 @@
+From 34e659c12eb4ae543e3c7a6539a3d51ec2ec295b Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Fri, 19 Feb 2021 11:18:25 +0800
+Subject: [PATCH] runc: add check in spec
+
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ Makefile | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index fcf34ea..364ac89 100644
+--- a/Makefile
++++ b/Makefile
+@@ -89,6 +89,9 @@ man:
+ runcimage:
+ 	docker build -t $(RUNC_IMAGE) .
+ 
++check:
++	go test -v ./libcontainer
++
+ test:
+ 	make unittest integration rootlessintegration
+ 
+-- 
+1.8.3.1
+

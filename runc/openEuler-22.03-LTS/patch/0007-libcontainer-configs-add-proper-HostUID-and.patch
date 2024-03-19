@@ -1,0 +1,256 @@
+From f139024bb220e087a20e8089b5dbd4fb4c06c4a8 Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Sat, 18 Mar 2017 04:32:16 +1100
+Subject: [PATCH 07/94] libcontainer: configs: add proper HostUID and
+ HostGID
+
+Previously Host{U,G}ID only gave you the root mapping, which isn't very
+useful if you are trying to do other things with the IDMaps.
+
+Change-Id: Idceb42455e258e5514c966fe8363693adb9d0028
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ libcontainer/configs/config_unix.go       | 40 ++++++++++++++++++++-----------
+ libcontainer/configs/config_unix_test.go  | 16 ++++++-------
+ libcontainer/configs/validate/rootless.go |  4 ++--
+ libcontainer/container_linux.go           |  4 ++--
+ libcontainer/factory_linux.go             |  4 ++--
+ libcontainer/specconv/spec_linux.go       |  4 ++--
+ utils_linux.go                            |  4 ++--
+ 7 files changed, 44 insertions(+), 32 deletions(-)
+
+diff --git a/libcontainer/configs/config_unix.go b/libcontainer/configs/config_unix.go
+index a60554a..8446399 100644
+--- a/libcontainer/configs/config_unix.go
++++ b/libcontainer/configs/config_unix.go
+@@ -4,38 +4,50 @@ package configs
+ 
+ import "fmt"
+ 
+-// HostUID gets the root uid for the process on host which could be non-zero
+-// when user namespaces are enabled.
+-func (c Config) HostUID() (int, error) {
++// HostUID gets the translated uid for the process on host which could be
++// different when user namespaces are enabled.
++func (c Config) HostUID(containerId int) (int, error) {
+ 	if c.Namespaces.Contains(NEWUSER) {
+ 		if c.UidMappings == nil {
+-			return -1, fmt.Errorf("User namespaces enabled, but no user mappings found.")
++			return -1, fmt.Errorf("User namespaces enabled, but no uid mappings found.")
+ 		}
+-		id, found := c.hostIDFromMapping(0, c.UidMappings)
++		id, found := c.hostIDFromMapping(containerId, c.UidMappings)
+ 		if !found {
+-			return -1, fmt.Errorf("User namespaces enabled, but no root user mapping found.")
++			return -1, fmt.Errorf("User namespaces enabled, but no user mapping found.")
+ 		}
+ 		return id, nil
+ 	}
+-	// Return default root uid 0
+-	return 0, nil
++	// Return unchanged id.
++	return containerId, nil
+ }
+ 
+-// HostGID gets the root gid for the process on host which could be non-zero
++// HostRootUID gets the root uid for the process on host which could be non-zero
+ // when user namespaces are enabled.
+-func (c Config) HostGID() (int, error) {
++func (c Config) HostRootUID() (int, error) {
++	return c.HostUID(0)
++}
++
++// HostGID gets the translated gid for the process on host which could be
++// different when user namespaces are enabled.
++func (c Config) HostGID(containerId int) (int, error) {
+ 	if c.Namespaces.Contains(NEWUSER) {
+ 		if c.GidMappings == nil {
+ 			return -1, fmt.Errorf("User namespaces enabled, but no gid mappings found.")
+ 		}
+-		id, found := c.hostIDFromMapping(0, c.GidMappings)
++		id, found := c.hostIDFromMapping(containerId, c.GidMappings)
+ 		if !found {
+-			return -1, fmt.Errorf("User namespaces enabled, but no root group mapping found.")
++			return -1, fmt.Errorf("User namespaces enabled, but no group mapping found.")
+ 		}
+ 		return id, nil
+ 	}
+-	// Return default root gid 0
+-	return 0, nil
++	// Return unchanged id.
++	return containerId, nil
++}
++
++// HostRootGID gets the root gid for the process on host which could be non-zero
++// when user namespaces are enabled.
++func (c Config) HostRootGID() (int, error) {
++	return c.HostGID(0)
+ }
+ 
+ // Utility function that gets a host ID for a container ID from user namespace map
+diff --git a/libcontainer/configs/config_unix_test.go b/libcontainer/configs/config_unix_test.go
+index dc01cd0..7f96615 100644
+--- a/libcontainer/configs/config_unix_test.go
++++ b/libcontainer/configs/config_unix_test.go
+@@ -65,11 +65,11 @@ func TestRemoveNamespace(t *testing.T) {
+ 	}
+ }
+ 
+-func TestHostUIDNoUSERNS(t *testing.T) {
++func TestHostRootUIDNoUSERNS(t *testing.T) {
+ 	config := &Config{
+ 		Namespaces: Namespaces{},
+ 	}
+-	uid, err := config.HostUID()
++	uid, err := config.HostRootUID()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -78,7 +78,7 @@ func TestHostUIDNoUSERNS(t *testing.T) {
+ 	}
+ }
+ 
+-func TestHostUIDWithUSERNS(t *testing.T) {
++func TestHostRootUIDWithUSERNS(t *testing.T) {
+ 	config := &Config{
+ 		Namespaces: Namespaces{{Type: NEWUSER}},
+ 		UidMappings: []IDMap{
+@@ -89,7 +89,7 @@ func TestHostUIDWithUSERNS(t *testing.T) {
+ 			},
+ 		},
+ 	}
+-	uid, err := config.HostUID()
++	uid, err := config.HostRootUID()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -98,11 +98,11 @@ func TestHostUIDWithUSERNS(t *testing.T) {
+ 	}
+ }
+ 
+-func TestHostGIDNoUSERNS(t *testing.T) {
++func TestHostRootGIDNoUSERNS(t *testing.T) {
+ 	config := &Config{
+ 		Namespaces: Namespaces{},
+ 	}
+-	uid, err := config.HostGID()
++	uid, err := config.HostRootGID()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -111,7 +111,7 @@ func TestHostGIDNoUSERNS(t *testing.T) {
+ 	}
+ }
+ 
+-func TestHostGIDWithUSERNS(t *testing.T) {
++func TestHostRootGIDWithUSERNS(t *testing.T) {
+ 	config := &Config{
+ 		Namespaces: Namespaces{{Type: NEWUSER}},
+ 		GidMappings: []IDMap{
+@@ -122,7 +122,7 @@ func TestHostGIDWithUSERNS(t *testing.T) {
+ 			},
+ 		},
+ 	}
+-	uid, err := config.HostGID()
++	uid, err := config.HostRootGID()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/libcontainer/configs/validate/rootless.go b/libcontainer/configs/validate/rootless.go
+index 1e83ced..0cebfaf 100644
+--- a/libcontainer/configs/validate/rootless.go
++++ b/libcontainer/configs/validate/rootless.go
+@@ -37,7 +37,7 @@ func (v *ConfigValidator) rootless(config *configs.Config) error {
+ }
+ 
+ func rootlessMappings(config *configs.Config) error {
+-	rootuid, err := config.HostUID()
++	rootuid, err := config.HostRootUID()
+ 	if err != nil {
+ 		return fmt.Errorf("failed to get root uid from uidMappings: %v", err)
+ 	}
+@@ -50,7 +50,7 @@ func rootlessMappings(config *configs.Config) error {
+ 		}
+ 	}
+ 
+-	rootgid, err := config.HostGID()
++	rootgid, err := config.HostRootGID()
+ 	if err != nil {
+ 		return fmt.Errorf("failed to get root gid from gidMappings: %v", err)
+ 	}
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index d847f18..71fa682 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -307,11 +307,11 @@ func (c *linuxContainer) Signal(s os.Signal, all bool) error {
+ }
+ 
+ func (c *linuxContainer) createExecFifo() error {
+-	rootuid, err := c.Config().HostUID()
++	rootuid, err := c.Config().HostRootUID()
+ 	if err != nil {
+ 		return err
+ 	}
+-	rootgid, err := c.Config().HostGID()
++	rootgid, err := c.Config().HostRootGID()
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/libcontainer/factory_linux.go b/libcontainer/factory_linux.go
+index 1f965e6..6a0f855 100644
+--- a/libcontainer/factory_linux.go
++++ b/libcontainer/factory_linux.go
+@@ -164,11 +164,11 @@ func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, err
+ 	if err := l.Validator.Validate(config); err != nil {
+ 		return nil, newGenericError(err, ConfigInvalid)
+ 	}
+-	uid, err := config.HostUID()
++	uid, err := config.HostRootUID()
+ 	if err != nil {
+ 		return nil, newGenericError(err, SystemError)
+ 	}
+-	gid, err := config.HostGID()
++	gid, err := config.HostRootGID()
+ 	if err != nil {
+ 		return nil, newGenericError(err, SystemError)
+ 	}
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index 346b268..1575ae0 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -610,11 +610,11 @@ func setupUserNamespace(spec *specs.Spec, config *configs.Config) error {
+ 	for _, m := range spec.Linux.GIDMappings {
+ 		config.GidMappings = append(config.GidMappings, create(m))
+ 	}
+-	rootUID, err := config.HostUID()
++	rootUID, err := config.HostRootUID()
+ 	if err != nil {
+ 		return err
+ 	}
+-	rootGID, err := config.HostGID()
++	rootGID, err := config.HostRootGID()
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/utils_linux.go b/utils_linux.go
+index 767015e..c6a8c02 100644
+--- a/utils_linux.go
++++ b/utils_linux.go
+@@ -242,12 +242,12 @@ func (r *runner) run(config *specs.Process) (int, error) {
+ 	for i := baseFd; i < baseFd+r.preserveFDs; i++ {
+ 		process.ExtraFiles = append(process.ExtraFiles, os.NewFile(uintptr(i), "PreserveFD:"+strconv.Itoa(i)))
+ 	}
+-	rootuid, err := r.container.Config().HostUID()
++	rootuid, err := r.container.Config().HostRootUID()
+ 	if err != nil {
+ 		r.destroy()
+ 		return -1, err
+ 	}
+-	rootgid, err := r.container.Config().HostGID()
++	rootgid, err := r.container.Config().HostRootGID()
+ 	if err != nil {
+ 		r.destroy()
+ 		return -1, err
+-- 
+2.7.4.3
+

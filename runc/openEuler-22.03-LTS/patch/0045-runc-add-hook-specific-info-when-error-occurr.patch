@@ -1,0 +1,128 @@
+From eed1c5ec5166a151da33b7b9cfd6535f4556c015 Mon Sep 17 00:00:00 2001
+From: dengguangxing <dengguangxing@huawei.com>
+Date: Tue, 16 Jan 2018 18:00:56 +0800
+Subject: [PATCH 45/94] runc: add hook specific info when error
+ occurred
+
+[Changelog]: print hook path and args when hook failed to make debug
+easier
+[Author]:Shukui Yang
+
+Change-Id: Idf704706b73f1cfa5f7f02b01b2ec58caadca79d
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/configs/config.go     | 10 ++++++++++
+ libcontainer/container_linux.go    |  2 +-
+ libcontainer/factory_linux_test.go |  4 ++++
+ libcontainer/process_linux.go      |  4 ++--
+ libcontainer/state_linux.go        |  4 ++--
+ 5 files changed, 19 insertions(+), 5 deletions(-)
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 3a2e824..49bc7a3 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -5,6 +5,7 @@ import (
+ 	"encoding/json"
+ 	"fmt"
+ 	"os/exec"
++	"strings"
+ 	"time"
+ 
+ 	"github.com/Sirupsen/logrus"
+@@ -282,6 +283,7 @@ type HookState struct {
+ type Hook interface {
+ 	// Run executes the hook with the provided state.
+ 	Run(HookState) error
++	Info() string
+ }
+ 
+ // NewFunctionHook will call the provided function when the hook is run.
+@@ -299,6 +301,10 @@ func (f FuncHook) Run(s HookState) error {
+ 	return f.run(s)
+ }
+ 
++func (f FuncHook) Info() string {
++	return "hook function"
++}
++
+ type Command struct {
+ 	Path    string         `json:"path"`
+ 	Args    []string       `json:"args"`
+@@ -318,6 +324,10 @@ type CommandHook struct {
+ 	Command
+ }
+ 
++func (c Command) Info() string {
++	return c.Path + "," + strings.Join(c.Args, ",")
++}
++
+ func (c Command) Run(s HookState) error {
+ 	b, err := json.Marshal(s)
+ 	if err != nil {
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index f4eec7e..9fabadc 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -294,7 +294,7 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
+ 					if err := parent.terminate(); err != nil {
+ 						logrus.Warn(err)
+ 					}
+-					return newSystemErrorWithCausef(err, "running poststart hook %d", i)
++					return newSystemErrorWithCausef(err, "running poststart hook %d:%s", i, hook.Info())
+ 				}
+ 			}
+ 		}
+diff --git a/libcontainer/factory_linux_test.go b/libcontainer/factory_linux_test.go
+index ea3b513..0a84a7d 100644
+--- a/libcontainer/factory_linux_test.go
++++ b/libcontainer/factory_linux_test.go
+@@ -205,3 +205,7 @@ type unserializableHook struct{}
+ func (unserializableHook) Run(configs.HookState) error {
+ 	return nil
+ }
++
++func (unserializableHook) Info() string {
++	return ""
++}
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 9373595..1b478d7 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -307,7 +307,7 @@ func (p *initProcess) start() error {
+ 					}
+ 					for i, hook := range p.config.Config.Hooks.Prestart {
+ 						if err := hook.Run(s); err != nil {
+-							return newSystemErrorWithCausef(err, "running prestart hook %d", i)
++							return newSystemErrorWithCausef(err, "running prestart hook %d:%s", i, hook.Info())
+ 						}
+ 					}
+ 				}
+@@ -330,7 +330,7 @@ func (p *initProcess) start() error {
+ 				}
+ 				for i, hook := range p.config.Config.Hooks.Prestart {
+ 					if err := hook.Run(s); err != nil {
+-						return newSystemErrorWithCausef(err, "running prestart hook %d", i)
++						return newSystemErrorWithCausef(err, "running prestart hook %d:%s", i, hook.Info())
+ 					}
+ 				}
+ 			}
+diff --git a/libcontainer/state_linux.go b/libcontainer/state_linux.go
+index 9f8def2..c4f0dfc 100644
+--- a/libcontainer/state_linux.go
++++ b/libcontainer/state_linux.go
+@@ -65,9 +65,9 @@ func runPoststopHooks(c *linuxContainer) error {
+ 			},
+ 			Root: c.config.Rootfs,
+ 		}
+-		for _, hook := range c.config.Hooks.Poststop {
++		for i, hook := range c.config.Hooks.Poststop {
+ 			if err := hook.Run(s); err != nil {
+-				return err
++				return newSystemErrorWithCausef(err, "running poststop hook %d:%s", i, hook.Info())
+ 			}
+ 		}
+ 	}
+-- 
+2.7.4.3
+

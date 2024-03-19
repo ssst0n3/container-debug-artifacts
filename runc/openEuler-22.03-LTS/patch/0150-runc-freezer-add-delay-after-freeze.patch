@@ -1,0 +1,54 @@
+From f128e6e6c63a45543d833b8a4db5e691cfa0a0cc Mon Sep 17 00:00:00 2001
+From: Lu Jingxiao <lujingxiao@huawei.com>
+Date: Thu, 14 Sep 2023 11:44:43 +0800
+Subject: [PATCH] [Huawei] freezer: add delay after freeze
+
+reason: add delay after freeze and add a debug print.
+backport from upstream manually with:
+
+Conflict:NA
+Reference:
+https://github.com/opencontainers/runc/commit/524abc59f46373a175b97bd07c4c7eccf5594cc6
+https://github.com/opencontainers/runc/commit/d1007b08a33ae63bb695fcb3244300c9bba2658a
+
+---
+ libcontainer/cgroups/fs/freezer.go | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/libcontainer/cgroups/fs/freezer.go b/libcontainer/cgroups/fs/freezer.go
+index 40f70c13..181caad1 100644
+--- a/libcontainer/cgroups/fs/freezer.go
++++ b/libcontainer/cgroups/fs/freezer.go
+@@ -8,6 +8,7 @@ import (
+ 	"strings"
+ 	"time"
+ 
++	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ )
+@@ -42,11 +43,21 @@ func (s *FreezerGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 			if err := writeFile(path, "freezer.state", string(configs.Frozen)); err != nil {
+ 				return err
+ 			}
++			if i%25 == 24 {
++				// Occasional short sleep before reading
++				// the state back also improves the chances to
++				// succeed in freezing in case of a very slow
++				// system.
++				time.Sleep(10 * time.Microsecond)
++			}
+ 			state, err := readFile(path, "freezer.state")
+ 			if err != nil {
+ 				return err
+ 			}
+ 			if strings.TrimSpace(state) == string(configs.Frozen) {
++				if i > 1 {
++					logrus.Debugf("frozen after %d retries", i)
++				}
+ 				return nil
+ 			}
+ 			time.Sleep(1 * time.Millisecond)
+-- 
+2.23.0
+

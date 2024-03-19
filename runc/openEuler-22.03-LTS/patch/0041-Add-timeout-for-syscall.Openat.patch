@@ -1,0 +1,68 @@
+From a2f81f8b740b371e710b63b8c81c704842140ace Mon Sep 17 00:00:00 2001
+From: yangshukui <yangshukui@huawei.com>
+Date: Tue, 18 Apr 2017 19:35:30 +0800
+Subject: [PATCH 41/94] Add timeout for syscall.Openat
+
+Openat will be blocked until the fifo on the other side is  opened, but in some
+abnomal scenario(e.g. containerd is killed), Openat maybe be blocked all the time.
+
+Change-Id: If1d514408b522c8bdf5f1c1cb0d3c625f0ef4a6d
+Signed-off-by: yangshukui <yangshukui@huawei.com>
+---
+ libcontainer/standard_init_linux.go | 30 ++++++++++++++++++++++++------
+ 1 file changed, 24 insertions(+), 6 deletions(-)
+
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index ee6f19a..484ba42 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -7,6 +7,7 @@ import (
+ 	"os"
+ 	"os/exec"
+ 	"syscall"
++	"time"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+@@ -166,15 +167,32 @@ func (l *linuxStandardInit) Init() error {
+ 	}
+ 	// close the pipe to signal that we have completed our init.
+ 	l.pipe.Close()
++
+ 	// wait for the fifo to be opened on the other side before
+ 	// exec'ing the users process.
+-	fd, err := syscall.Openat(l.stateDirFD, execFifoFilename, os.O_WRONLY|syscall.O_CLOEXEC, 0)
+-	if err != nil {
+-		return newSystemErrorWithCause(err, "openat exec fifo")
+-	}
+-	if _, err := syscall.Write(fd, []byte("0")); err != nil {
+-		return newSystemErrorWithCause(err, "write 0 exec fifo")
++	ch := make(chan Error, 1)
++	go func() {
++		fd, err := syscall.Openat(l.stateDirFD, execFifoFilename, os.O_WRONLY|syscall.O_CLOEXEC, 0)
++		if err != nil {
++			ch <- newSystemErrorWithCause(err, "openat exec fifo")
++			return
++		}
++		if _, err := syscall.Write(fd, []byte("0")); err != nil {
++			ch <- newSystemErrorWithCause(err, "write 0 exec fifo")
++			return
++		}
++		ch <- nil
++	}()
++
++	select {
++	case chErr := <-ch:
++		if chErr != nil {
++			return chErr
++		}
++	case <-time.After(120 * time.Second):
++		return newSystemErrorWithCause(fmt.Errorf("timeout"), "wait for the fifo to be opened on the other side ")
+ 	}
++
+ 	if l.config.Config.Seccomp != nil && l.config.NoNewPrivileges {
+ 		if err := seccomp.InitSeccomp(l.config.Config.Seccomp); err != nil {
+ 			return newSystemErrorWithCause(err, "init seccomp")
+-- 
+2.7.4.3
+

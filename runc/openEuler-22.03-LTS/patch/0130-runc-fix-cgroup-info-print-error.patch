@@ -1,0 +1,40 @@
+From 40dd39dea67339fdcb88e64e52d054648fcbd362 Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Tue, 5 Jul 2022 17:28:48 +0800
+Subject: [PATCH] runc: fix cgroup info print error
+
+reason: still using syslog hook to print logrus in create-init,
+as logPipe will be closed before printCgroupInfo() called, cgroup info
+could not be printed by logPipe.
+---
+ main_unix.go | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/main_unix.go b/main_unix.go
+index 45e6df61..04799491 100644
+--- a/main_unix.go
++++ b/main_unix.go
+@@ -19,13 +19,14 @@ func init() {
+ 		runtime.GOMAXPROCS(1)
+ 		runtime.LockOSThread()
+ 
+-		logPipeFd, err := strconv.Atoi(os.Getenv("_LIBCONTAINER_LOGPIPE"))
+-		if err != nil {
+-			return
++		if initType := os.Getenv("_LIBCONTAINER_INITTYPE"); initType == "setns" {
++			logPipeFd, err := strconv.Atoi(os.Getenv("_LIBCONTAINER_LOGPIPE"))
++			if err != nil {
++				return
++			}
++			logrus.SetOutput(os.NewFile(uintptr(logPipeFd), "logpipe"))
++			logrus.SetFormatter(new(logrus.JSONFormatter))
+ 		}
+-		logrus.SetOutput(os.NewFile(uintptr(logPipeFd), "logpipe"))
+-		logrus.SetFormatter(new(logrus.JSONFormatter))
+-		logrus.Info("child process init-function finished")
+ 	}
+ }
+ 
+-- 
+2.30.0
+
