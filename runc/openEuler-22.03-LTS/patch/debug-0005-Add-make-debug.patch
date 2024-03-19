@@ -17,3 +17,28 @@ index b9d7c98..e44dcbf 100644
  install:
  	install -D -m0755 runc $(BINDIR)/runc
  
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file
