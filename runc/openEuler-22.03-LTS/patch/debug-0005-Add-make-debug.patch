@@ -1,0 +1,19 @@
+diff --git a/Makefile b/Makefile
+index b9d7c98..e44dcbf 100644
+--- a/Makefile
++++ b/Makefile
+@@ -113,6 +113,14 @@ localrootlessintegration: all
+ shell: 
+ 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
++	mv runc runc-v1.0.0-rc3-debug
++	mv debug-flag.go.bak debug-flag.go
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
++	mv runc runc-v1.0.0-rc3-debug-flag
++
+ install:
+ 	install -D -m0755 runc $(BINDIR)/runc
+ 
