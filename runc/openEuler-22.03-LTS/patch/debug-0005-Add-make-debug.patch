@@ -9,10 +9,10 @@ index b9d7c98..e44dcbf 100644
 +debug:
 +	mv debug-flag.go debug-flag.go.bak || echo ""
 +	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
-+	mv runc runc-v1.0.0-rc3-debug
++	mv runc runc-openEuler-22.03-LTS-debug
 +	mv debug-flag.go.bak debug-flag.go
 +	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
-+	mv runc runc-v1.0.0-rc3-debug-flag
++	mv runc runc-openEuler-22.03-LTS-debug-flag
 +
  install:
  	install -D -m0755 runc $(BINDIR)/runc
