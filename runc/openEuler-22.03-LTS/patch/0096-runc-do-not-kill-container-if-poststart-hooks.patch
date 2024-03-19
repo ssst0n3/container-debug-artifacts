@@ -1,0 +1,31 @@
+From 5a4335581b0ccf28342f3e48639ba38b611a02fe Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Wed, 13 Mar 2019 15:40:12 +0800
+Subject: [PATCH] runc:  do not kill container if poststart hooks
+ execute failed
+
+reason:do not kill container if poststart hooks execute failed.
+
+Change-Id: Ieb1e1e7eeefe4bbd3cdb38fbba5a2a003297a5b3
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ libcontainer/container_linux.go | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 1f587c7..914da7f 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -342,9 +342,6 @@ func (c *linuxContainer) start(process *Process) error {
+ 				logrus.Infof("run poststart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 				if err := hook.Run(s); err != nil {
+ 					logrus.Warnf("running poststart hook %d:%s failed: %s, ContainerId: %s", i, hook.Info(), err, s.ID)
+-					if err := parent.terminate(); err != nil {
+-						logrus.Warnf("run poststart hook failed: %s, ContainerID: %s", err, s.ID)
+-					}
+ 				}
+ 			}
+ 		}
+-- 
+1.8.3.1
+

@@ -1,0 +1,297 @@
+From da07a376d48d2d589f8ce5669f93450da4f01521 Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Mon, 25 Oct 2021 15:57:42 +0800
+Subject: [PATCH] runc: improve log for debugging
+
+add following logs for debugging
+1. print pid and memory cgroup information when container init process
+   start fail.
+2. improve error return in execSetns()
+3. using logpipe to support for logging from child process
+4. add log when init() finished in child process for debug
+
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/factory_linux.go       | 13 +++++++++----
+ libcontainer/init_linux.go          |  4 +++-
+ libcontainer/logs/logs.go           |  2 +-
+ libcontainer/nsenter/nsexec.c       |  1 -
+ libcontainer/process_linux.go       | 10 +++++-----
+ libcontainer/setns_init_linux.go    |  5 +++++
+ libcontainer/standard_init_linux.go | 18 ++++++++++++++----
+ main.go                             |  6 +++++-
+ main_unix.go                        | 10 ++++++++++
+ 9 files changed, 52 insertions(+), 17 deletions(-)
+
+diff --git a/libcontainer/factory_linux.go b/libcontainer/factory_linux.go
+index fe9ce242..e4ef5184 100644
+--- a/libcontainer/factory_linux.go
++++ b/libcontainer/factory_linux.go
+@@ -4,15 +4,15 @@ package libcontainer
+ 
+ import (
+ 	"encoding/json"
++	"errors"
+ 	"fmt"
++	"io/ioutil"
+ 	"os"
+ 	"path/filepath"
+ 	"regexp"
+ 	"runtime/debug"
+ 	"strconv"
+ 	"syscall"
+-	"io/ioutil"
+-	"errors"
+ 
+ 	"github.com/docker/docker/pkg/mount"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+@@ -281,6 +281,11 @@ func (l *LinuxFactory) StartInitialization() (err error) {
+ 		defer consoleSocket.Close()
+ 	}
+ 
++	logPipeFd, err2 := strconv.Atoi(os.Getenv("_LIBCONTAINER_LOGPIPE"))
++	if err2 != nil {
++		logPipeFd = 0
++	}
++
+ 	// clear the current process's environment to clean any libcontainer
+ 	// specific env vars.
+ 	os.Clearenv()
+@@ -303,7 +308,7 @@ func (l *LinuxFactory) StartInitialization() (err error) {
+ 		}
+ 	}()
+ 
+-	i, err := newContainerInit(it, pipe, consoleSocket, rootfd)
++	i, err := newContainerInit(it, pipe, consoleSocket, rootfd, logPipeFd)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -346,7 +351,7 @@ func (l *LinuxFactory) updateStateCapabilites(compatState *CompatState, configPa
+ 			var memSize int64 = int64(memorySwappiness)
+ 			if memSize < 0 {
+ 				memSize = 0
+-				var memUSize uint64 = uint64(memSize-1)
++				var memUSize uint64 = uint64(memSize - 1)
+ 				compatState.Config.Cgroups.MemorySwappiness = &memUSize
+ 				needUpdate = true
+ 			}
+diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
+index ee632b4c..e9a83e9b 100644
+--- a/libcontainer/init_linux.go
++++ b/libcontainer/init_linux.go
+@@ -66,7 +66,7 @@ type initer interface {
+ 	Init() error
+ }
+ 
+-func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, stateDirFD int) (initer, error) {
++func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, stateDirFD, logFd int) (initer, error) {
+ 	var config *initConfig
+ 	if err := json.NewDecoder(pipe).Decode(&config); err != nil {
+ 		return nil, err
+@@ -81,6 +81,7 @@ func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, stateDi
+ 			pipe:          pipe,
+ 			consoleSocket: consoleSocket,
+ 			config:        config,
++			logFd:         logFd,
+ 		}, nil
+ 	case initStandard:
+ 		return &linuxStandardInit{
+@@ -89,6 +90,7 @@ func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, stateDi
+ 			parentPid:     syscall.Getppid(),
+ 			config:        config,
+ 			stateDirFD:    stateDirFD,
++			logFd:         logFd,
+ 		}, nil
+ 	}
+ 	return nil, fmt.Errorf("unknown init type %q", t)
+diff --git a/libcontainer/logs/logs.go b/libcontainer/logs/logs.go
+index 219fe382..408a1480 100644
+--- a/libcontainer/logs/logs.go
++++ b/libcontainer/logs/logs.go
+@@ -64,5 +64,5 @@ func processEntry(text []byte) {
+ 		logrus.Errorf("failed to decode %q to json: %v", text, err)
+ 		return
+ 	}
+-	logrus.Errorf("error from child %s", jl.Msg)
++	logrus.Infof("log from child: %s", jl.Msg)
+ }
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 8e059e09..0075b6e4 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -913,7 +913,6 @@ void nsexec(void)
+ 			/* Free netlink data. */
+ 			nl_free(&config);
+ 
+-			close(logfd);
+ 			/* Finish executing, let the Go runtime take over. */
+ 			return;
+ 		}
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 0c5cd47c..5cdc30c4 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -16,9 +16,9 @@ import (
+ 	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/logs"
+ 	"github.com/opencontainers/runc/libcontainer/system"
+ 	"github.com/opencontainers/runc/libcontainer/utils"
+-	"github.com/opencontainers/runc/libcontainer/logs"
+ 	"golang.org/x/sys/unix"
+ )
+ 
+@@ -137,7 +137,7 @@ func (p *setnsProcess) execSetns() error {
+ 	}
+ 	if !status.Success() {
+ 		p.cmd.Wait()
+-		return newSystemError(&exec.ExitError{ProcessState: status})
++		return newSystemErrorWithCause(&exec.ExitError{ProcessState: status}, "getting setns process status")
+ 	}
+ 	var pid *pid
+ 	if err := json.NewDecoder(p.parentPipe).Decode(&pid); err != nil {
+@@ -224,16 +224,16 @@ func (p *initProcess) execSetns() error {
+ 	status, err := p.cmd.Process.Wait()
+ 	if err != nil {
+ 		p.cmd.Wait()
+-		return err
++		return newSystemErrorWithCause(err, "waiting on setns process to finish")
+ 	}
+ 	if !status.Success() {
+ 		p.cmd.Wait()
+-		return &exec.ExitError{ProcessState: status}
++		return newSystemErrorWithCause(&exec.ExitError{ProcessState: status}, "getting setns process status")
+ 	}
+ 	var pid *pid
+ 	if err := json.NewDecoder(p.parentPipe).Decode(&pid); err != nil {
+ 		p.cmd.Wait()
+-		return err
++		return newSystemErrorWithCause(err, "reading pid from init pipe")
+ 	}
+ 
+ 	// Clean up the zombie parent process
+diff --git a/libcontainer/setns_init_linux.go b/libcontainer/setns_init_linux.go
+index b3fab219..1f7ec98b 100644
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -21,6 +21,7 @@ type linuxSetnsInit struct {
+ 	pipe          *os.File
+ 	consoleSocket *os.File
+ 	config        *initConfig
++	logFd         int
+ }
+ 
+ func (l *linuxSetnsInit) getSessionRingName() string {
+@@ -68,5 +69,9 @@ func (l *linuxSetnsInit) Init() error {
+ 	if err := label.SetProcessLabel(l.config.ProcessLabel); err != nil {
+ 		return err
+ 	}
++	if l.logFd != 0 {
++		syscall.Close(l.logFd)
++	}
++
+ 	return system.Execv(l.config.Args[0], l.config.Args[0:], os.Environ())
+ }
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index b985180a..53c81e9f 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -27,6 +27,7 @@ type linuxStandardInit struct {
+ 	parentPid     int
+ 	stateDirFD    int
+ 	config        *initConfig
++	logFd         int
+ }
+ 
+ func (l *linuxStandardInit) getSessionRingParams() (string, uint32, uint32) {
+@@ -181,6 +182,10 @@ func (l *linuxStandardInit) Init() error {
+ 	// close the pipe to signal that we have completed our init.
+ 	l.pipe.Close()
+ 
++	if l.logFd != 0 {
++		syscall.Close(l.logFd)
++	}
++
+ 	// wait for the fifo to be opened on the other side before
+ 	// exec'ing the users process.
+ 	ch := make(chan Error, 1)
+@@ -222,13 +227,18 @@ func (l *linuxStandardInit) Init() error {
+ }
+ 
+ func printCgroupInfo(path string) {
++	cgroupRoot := "/sys/fs/cgroup"
+ 	infoFileList := []string{
+ 		"/proc/meminfo",
+ 		"/sys/fs/cgroup/memory/memory.stat",
+-		filepath.Join("/sys/fs/cgroup/files", path, "/files.limit"),
+-		filepath.Join("/sys/fs/cgroup/files", path, "/files.usage"),
+-		filepath.Join("/sys/fs/cgroup/memory", path, "/memory.stat"),
+-		filepath.Join("/sys/fs/cgroup/cpu", path, "/cpu.stat"),
++		filepath.Join(cgroupRoot, "files", path, "files.limit"),
++		filepath.Join(cgroupRoot, "files", path, "files.usage"),
++		filepath.Join(cgroupRoot, "pids", path, "pids.max"),
++		filepath.Join(cgroupRoot, "pids", path, "pids.current"),
++		filepath.Join(cgroupRoot, "memory", path, "memory.usage_in_bytes"),
++		filepath.Join(cgroupRoot, "memory", path, "memory.limit_in_bytes"),
++		filepath.Join(cgroupRoot, "memory", path, "memory.stat"),
++		filepath.Join(cgroupRoot, "cpu", path, "cpu.stat"),
+ 	}
+ 	for _, file := range infoFileList {
+ 		printFileContent(file)
+diff --git a/main.go b/main.go
+index 04762424..4141ec56 100644
+--- a/main.go
++++ b/main.go
+@@ -10,7 +10,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/Sirupsen/logrus"
+-	"github.com/Sirupsen/logrus/hooks/syslog"
++	logrus_syslog "github.com/Sirupsen/logrus/hooks/syslog"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+ 	"github.com/urfave/cli"
+ )
+@@ -118,6 +118,10 @@ func main() {
+ 		updateCommand,
+ 	}
+ 	app.Before = func(context *cli.Context) error {
++		if logrus.StandardLogger().Out != logrus.New().Out {
++			return nil
++		}
++
+ 		if path := context.GlobalString("log"); path != "" {
+ 			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_SYNC, 0666)
+ 			if err != nil {
+diff --git a/main_unix.go b/main_unix.go
+index 56904e08..45e6df61 100644
+--- a/main_unix.go
++++ b/main_unix.go
+@@ -6,7 +6,9 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"runtime"
++	"strconv"
+ 
++	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer"
+ 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
+ 	"github.com/urfave/cli"
+@@ -16,6 +18,14 @@ func init() {
+ 	if len(os.Args) > 1 && os.Args[1] == "init" {
+ 		runtime.GOMAXPROCS(1)
+ 		runtime.LockOSThread()
++
++		logPipeFd, err := strconv.Atoi(os.Getenv("_LIBCONTAINER_LOGPIPE"))
++		if err != nil {
++			return
++		}
++		logrus.SetOutput(os.NewFile(uintptr(logPipeFd), "logpipe"))
++		logrus.SetFormatter(new(logrus.JSONFormatter))
++		logrus.Info("child process init-function finished")
+ 	}
+ }
+ 
+-- 
+2.27.0
+

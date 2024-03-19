@@ -1,0 +1,143 @@
+From 96ce6d60417ddf6c09d7e9a2b82421adcb01652f Mon Sep 17 00:00:00 2001
+From: Alex Fang <littlelightlittlefire@gmail.com>
+Date: Sat, 6 May 2017 21:34:32 +1000
+Subject: [PATCH] runc:Pass back the pid of runc:[1:CHILD] so we can
+ wait on it
+
+reason:This allows the libcontainer to automatically clean up runc:[1:CHILD]
+processes created as part of nsenter.
+
+Change-Id: Ib3641cf54b5c8b830bc01fa60b3cfdcc189ea660
+Signed-off-by: Alex Fang <littlelightlittlefire@gmail.com>
+---
+ libcontainer/init_linux.go    |  3 ++-
+ libcontainer/nsenter/nsexec.c | 17 +++++++++++------
+ libcontainer/process_linux.go | 27 ++++++++++++++++++++++-----
+ 3 files changed, 35 insertions(+), 12 deletions(-)
+
+diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
+index 99cc02c..2a93431 100644
+--- a/libcontainer/init_linux.go
++++ b/libcontainer/init_linux.go
+@@ -29,7 +29,8 @@ const (
+ )
+ 
+ type pid struct {
+-	Pid int `json:"pid"`
++	Pid           int `json:"pid"`
++	PidFirstChild int `json:"pid_first"`
+ }
+ 
+ // network is an internal struct used to setup container networks.
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 64ed76f..4f73b1a 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -554,7 +554,7 @@ void nsexec(void)
+ 	 */
+ 	case JUMP_PARENT: {
+ 			int len;
+-			pid_t child;
++			pid_t child, first_child = -1;
+ 			char buf[JSON_MAX];
+ 			bool ready = false;
+ 
+@@ -618,18 +618,18 @@ void nsexec(void)
+ 					}
+ 					break;
+ 				case SYNC_RECVPID_PLS: {
+-						pid_t old = child;
++						first_child = child;
+ 
+ 						/* Get the init_func pid. */
+ 						if (read(syncfd, &child, sizeof(child)) != sizeof(child)) {
+-							kill(old, SIGKILL);
++							kill(first_child, SIGKILL);
+ 							bail("failed to sync with child: read(childpid)");
+ 						}
+ 
+ 						/* Send ACK. */
+ 						s = SYNC_RECVPID_ACK;
+ 						if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
+-							kill(old, SIGKILL);
++							kill(first_child, SIGKILL);
+ 							kill(child, SIGKILL);
+ 							bail("failed to sync with child: write(SYNC_RECVPID_ACK)");
+ 						}
+@@ -677,8 +677,13 @@ void nsexec(void)
+ 				}
+ 			}
+ 
+-			/* Send the init_func pid back to our parent. */
+-			len = snprintf(buf, JSON_MAX, "{\"pid\": %d}\n", child);
++			/*
++			 * Send the init_func pid and the pid of the first child back to our parent.
++			 *
++			 * We need to send both back because we can't reap the first child we created (CLONE_PARENT).
++			 * It becomes the responsibility of our parent to reap the first child.
++			 */
++			len = snprintf(buf, JSON_MAX, "{\"pid\": %d, \"pid_first\": %d}\n", child, first_child);
+ 			if (len < 0) {
+ 				kill(child, SIGKILL);
+ 				bail("unable to generate JSON for child pid");
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 7a3da4f..25fe30b 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -6,17 +6,18 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
+-	"github.com/Sirupsen/logrus"
+-	"github.com/opencontainers/runc/libcontainer/cgroups"
+-	"github.com/opencontainers/runc/libcontainer/configs"
+-	"github.com/opencontainers/runc/libcontainer/system"
+-	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"io"
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+ 	"strconv"
+ 	"syscall"
++
++	"github.com/Sirupsen/logrus"
++	"github.com/opencontainers/runc/libcontainer/cgroups"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/system"
++	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"golang.org/x/sys/unix"
+ )
+ 
+@@ -141,6 +142,14 @@ func (p *setnsProcess) execSetns() error {
+ 		p.cmd.Wait()
+ 		return newSystemErrorWithCause(err, "reading pid from init pipe")
+ 	}
++
++	// Clean up the zombie parent process
++	// On Unix systems FindProcess always succeeds.
++	firstChildProcess, _ := os.FindProcess(pid.PidFirstChild)
++
++	// Ignore the error in case the child has already been reaped for any reason
++	_, _ = firstChildProcess.Wait()
++
+ 	process, err := os.FindProcess(pid.Pid)
+ 	if err != nil {
+ 		return err
+@@ -224,6 +233,14 @@ func (p *initProcess) execSetns() error {
+ 		p.cmd.Wait()
+ 		return err
+ 	}
++
++	// Clean up the zombie parent process
++	// On Unix systems FindProcess always succeeds.
++	firstChildProcess, _ := os.FindProcess(pid.PidFirstChild)
++
++	// Ignore the error in case the child has already been reaped for any reason
++	_, _ = firstChildProcess.Wait()
++
+ 	process, err := os.FindProcess(pid.Pid)
+ 	if err != nil {
+ 		return err
+-- 
+1.8.3.1
+

@@ -1,0 +1,57 @@
+From 9d30f4580c68c7d16a94d0df04b61571b212e55f Mon Sep 17 00:00:00 2001
+From: chchliang <chen.chuanliang@zte.com.cn>
+Date: Wed, 12 Apr 2017 16:26:30 +0800
+Subject: [PATCH 20/94] add testcase in generic_error_test.go
+
+Change-Id: Id0e21750ea9724d48423ab16f70786a1f62ea81c
+Signed-off-by: chchliang <chen.chuanliang@zte.com.cn>
+---
+ libcontainer/generic_error_test.go | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/libcontainer/generic_error_test.go b/libcontainer/generic_error_test.go
+index 292d2a3..8fbdd4d 100644
+--- a/libcontainer/generic_error_test.go
++++ b/libcontainer/generic_error_test.go
+@@ -12,3 +12,38 @@ func TestErrorDetail(t *testing.T) {
+ 		t.Fatal(derr)
+ 	}
+ }
++
++func TestErrorWithCode(t *testing.T) {
++	err := newGenericError(fmt.Errorf("test error"), SystemError)
++	if code := err.Code(); code != SystemError {
++		t.Fatalf("expected err code %q but %q", SystemError, code)
++	}
++}
++
++func TestErrorWithError(t *testing.T) {
++	cc := []struct {
++		errmsg string
++		cause  string
++	}{
++		{
++			errmsg: "test error",
++		},
++		{
++			errmsg: "test error",
++			cause:  "test",
++		},
++	}
++
++	for _, v := range cc {
++		err := newSystemErrorWithCause(fmt.Errorf(v.errmsg), v.cause)
++
++		msg := err.Error()
++		if v.cause == "" && msg != v.errmsg {
++			t.Fatalf("expected err(%q) equal errmsg(%q)", msg, v.errmsg)
++		}
++		if v.cause != "" && msg == v.errmsg {
++			t.Fatalf("unexpected err(%q) equal errmsg(%q)", msg, v.errmsg)
++		}
++
++	}
++}
+-- 
+2.7.4.3
+

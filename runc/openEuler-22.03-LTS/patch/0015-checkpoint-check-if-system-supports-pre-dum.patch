@@ -1,0 +1,161 @@
+From 6397990e4ee68389c05fa2a0c89d1c4d4e5e5677 Mon Sep 17 00:00:00 2001
+From: Adrian Reber <areber@redhat.com>
+Date: Tue, 14 Mar 2017 20:21:58 +0000
+Subject: [PATCH 15/94] checkpoint: check if system supports
+ pre-dumping
+
+Instead of relying on version numbers it is possible to check if CRIU
+actually supports certain features. This introduces an initial
+implementation to check if CRIU and the underlying kernel actually
+support dirty memory tracking for memory pre-dumping.
+
+Upstream CRIU also supports the lazy-page migration feature check and
+additional feature checks can be included in CRIU to reduce the version
+number parsing. There are also certain CRIU features which depend on one
+side on the CRIU version but also require certain kernel versions to
+actually work. CRIU knows if it can do certain things on the kernel it
+is running on and using the feature check RPC interface makes it easier
+for runc to decide if the criu+kernel combination will support that
+feature.
+
+Feature checking was introduced with CRIU 1.8. Running with older CRIU
+versions will ignore the feature check functionality and behave just
+like it used to.
+
+v2:
+ - Do not use reflection to compare requested and responded
+   features. Checking which feature is available is now hardcoded
+   and needs to be adapted for every new feature check. The code
+   is now much more readable and simpler.
+
+v3:
+ - Move the variable criuFeat out of the linuxContainer struct,
+   as it is not container specific. Now it is a global variable.
+
+Change-Id: Ide44007d031d1bc4572dab1e88d78762944b379b
+Signed-off-by: Adrian Reber <areber@redhat.com>
+---
+ libcontainer/container_linux.go | 85 ++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 76 insertions(+), 9 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 26e51ae..705472a 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -536,6 +536,56 @@ func (c *linuxContainer) NotifyMemoryPressure(level PressureLevel) (<-chan struc
+ 	return notifyMemoryPressure(c.cgroupManager.GetPaths(), level)
+ }
+ 
++var criuFeatures *criurpc.CriuFeatures
++
++func (c *linuxContainer) checkCriuFeatures(criuOpts *CriuOpts, rpcOpts *criurpc.CriuOpts, criuFeat *criurpc.CriuFeatures) error {
++
++	var t criurpc.CriuReqType
++	t = criurpc.CriuReqType_FEATURE_CHECK
++
++	if err := c.checkCriuVersion("1.8"); err != nil {
++		// Feature checking was introduced with CRIU 1.8.
++		// Ignore the feature check if an older CRIU version is used
++		// and just act as before.
++		// As all automated PR testing is done using CRIU 1.7 this
++		// code will not be tested by automated PR testing.
++		return nil
++	}
++
++	// make sure the features we are looking for are really not from
++	// some previous check
++	criuFeatures = nil
++
++	req := &criurpc.CriuReq{
++		Type: &t,
++		// Theoretically this should not be necessary but CRIU
++		// segfaults if Opts is empty.
++		// Fixed in CRIU  2.12
++		Opts:     rpcOpts,
++		Features: criuFeat,
++	}
++
++	err := c.criuSwrk(nil, req, criuOpts, false)
++	if err != nil {
++		logrus.Debugf("%s", err)
++		return fmt.Errorf("CRIU feature check failed")
++	}
++
++	logrus.Debugf("Feature check says: %s", criuFeatures)
++	missingFeatures := false
++
++	if *criuFeat.MemTrack && !*criuFeatures.MemTrack {
++		missingFeatures = true
++		logrus.Debugf("CRIU does not support MemTrack")
++	}
++
++	if missingFeatures {
++		return fmt.Errorf("CRIU is missing features")
++	}
++
++	return nil
++}
++
+ // checkCriuVersion checks Criu version greater than or equal to minVersion
+ func (c *linuxContainer) checkCriuVersion(minVersion string) error {
+ 	var x, y, z, versionReq int
+@@ -718,6 +768,14 @@ func (c *linuxContainer) Checkpoint(criuOpts *CriuOpts) error {
+ 
+ 	var t criurpc.CriuReqType
+ 	if criuOpts.PreDump {
++		feat := criurpc.CriuFeatures{
++			MemTrack: proto.Bool(true),
++		}
++
++		if err := c.checkCriuFeatures(criuOpts, &rpcOpts, &feat); err != nil {
++			return err
++		}
++
+ 		t = criurpc.CriuReqType_PRE_DUMP
+ 	} else {
+ 		t = criurpc.CriuReqType_DUMP
+@@ -1019,16 +1077,21 @@ func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *
+ 	}
+ 
+ 	logrus.Debugf("Using CRIU in %s mode", req.GetType().String())
+-	val := reflect.ValueOf(req.GetOpts())
+-	v := reflect.Indirect(val)
+-	for i := 0; i < v.NumField(); i++ {
+-		st := v.Type()
+-		name := st.Field(i).Name
+-		if strings.HasPrefix(name, "XXX_") {
+-			continue
++	// In the case of criurpc.CriuReqType_FEATURE_CHECK req.GetOpts()
++	// should be empty. For older CRIU versions it still will be
++	// available but empty.
++	if req.GetType() != criurpc.CriuReqType_FEATURE_CHECK {
++		val := reflect.ValueOf(req.GetOpts())
++		v := reflect.Indirect(val)
++		for i := 0; i < v.NumField(); i++ {
++			st := v.Type()
++			name := st.Field(i).Name
++			if strings.HasPrefix(name, "XXX_") {
++				continue
++			}
++			value := val.MethodByName("Get" + name).Call([]reflect.Value{})
++			logrus.Debugf("CRIU option %s with value %v", name, value[0])
+ 		}
+-		value := val.MethodByName("Get" + name).Call([]reflect.Value{})
+-		logrus.Debugf("CRIU option %s with value %v", name, value[0])
+ 	}
+ 	data, err := proto.Marshal(req)
+ 	if err != nil {
+@@ -1064,6 +1127,10 @@ func (c *linuxContainer) criuSwrk(process *Process, req *criurpc.CriuReq, opts *
+ 
+ 		t := resp.GetType()
+ 		switch {
++		case t == criurpc.CriuReqType_FEATURE_CHECK:
++			logrus.Debugf("Feature check says: %s", resp)
++			criuFeatures = resp.GetFeatures()
++			break
+ 		case t == criurpc.CriuReqType_NOTIFY:
+ 			if err := c.criuNotifications(resp, process, opts, extFds); err != nil {
+ 				return err
+-- 
+2.7.4.3
+

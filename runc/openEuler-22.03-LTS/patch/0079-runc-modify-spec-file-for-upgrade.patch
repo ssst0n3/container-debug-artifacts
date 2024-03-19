@@ -1,0 +1,29 @@
+From 912f3b9001459f118fd85f04d7614cbaaa1c351b Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Tue, 25 Dec 2018 19:13:32 +0800
+Subject: [PATCH 79/94] runc:  modify spec file for upgrade
+
+reason:modify spec file for upgrade
+
+Change-Id: Ifad62b1e80bf67bb0a043bdd98e5ac03233727f5
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ script/runc-euleros.spec | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index f21ac08..faccbf6 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 16%{?dist}
++Release: 17%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

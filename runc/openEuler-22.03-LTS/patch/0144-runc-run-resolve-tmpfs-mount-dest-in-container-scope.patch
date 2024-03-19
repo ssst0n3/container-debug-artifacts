@@ -1,0 +1,42 @@
+From c9e5582c822aca7d6ec2e1d6c494ab2370aac82f Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Mon, 4 Jan 2021 20:17:35 -0800
+Subject: [PATCH] runc run: resolve tmpfs mount dest in container scope
+
+In case a tmpfs mount path contains absolute symlinks, runc errors out
+because those symlinks are resolved in the host (rather than container)
+filesystem scope.
+
+The fix is similar to that for bind mounts -- resolve the destination
+in container rootfs scope using securejoin, and use the resolved path.
+
+A simple integration test case is added to prevent future regressions.
+
+Fixes https://github.com/opencontainers/runc/issues/2683.
+
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ libcontainer/rootfs_linux.go | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index b005429b..dc66d8a9 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -208,6 +208,13 @@ func mountToRootfs(m *configs.Mount, rootfs, mountLabel string) error {
+ 	case "tmpfs":
+ 		copyUp := m.Extensions&configs.EXT_COPYUP == configs.EXT_COPYUP
+ 		tmpDir := ""
++		// dest might be an absolute symlink, so it needs
++		// to be resolved under rootfs.
++		dest, err := securejoin.SecureJoin(rootfs, m.Destination)
++		if err != nil {
++			return err
++		}
++		m.Destination = dest
+ 		stat, err := os.Stat(dest)
+ 		if err != nil {
+ 			if err := os.MkdirAll(dest, 0755); err != nil {
+-- 
+2.33.0
+

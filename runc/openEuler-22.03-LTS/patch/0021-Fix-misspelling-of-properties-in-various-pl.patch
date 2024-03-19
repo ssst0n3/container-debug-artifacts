@@ -1,0 +1,53 @@
+From fe398ce943f5da085507be6a164568544fc0d1c4 Mon Sep 17 00:00:00 2001
+From: Tim Potter <tpot@hpe.com>
+Date: Fri, 21 Apr 2017 12:41:02 +1000
+Subject: [PATCH 21/94] Fix misspelling of "properties" in various
+ places
+
+Change-Id: I69229a0ba2472b52edd4c444ac7820ade837726d
+Signed-off-by: Tim Potter <tpot@hpe.com>
+---
+ checkpoint.go            | 2 +-
+ man/runc-checkpoint.8.md | 2 +-
+ restore.go               | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/checkpoint.go b/checkpoint.go
+index 78977d7..9b5663f 100644
+--- a/checkpoint.go
++++ b/checkpoint.go
+@@ -33,7 +33,7 @@ checkpointed.`,
+ 		cli.BoolFlag{Name: "file-locks", Usage: "handle file locks, for safety"},
+ 		cli.BoolFlag{Name: "pre-dump", Usage: "dump container's memory information only, leave the container running after this"},
+ 		cli.StringFlag{Name: "manage-cgroups-mode", Value: "", Usage: "cgroups mode: 'soft' (default), 'full' and 'strict'"},
+-		cli.StringSliceFlag{Name: "empty-ns", Usage: "create a namespace, but don't restore its properies"},
++		cli.StringSliceFlag{Name: "empty-ns", Usage: "create a namespace, but don't restore its properties"},
+ 	},
+ 	Action: func(context *cli.Context) error {
+ 		if err := checkArgs(context, 1, exactArgs); err != nil {
+diff --git a/man/runc-checkpoint.8.md b/man/runc-checkpoint.8.md
+index b0ce2f3..4c81fd4 100644
+--- a/man/runc-checkpoint.8.md
++++ b/man/runc-checkpoint.8.md
+@@ -22,4 +22,4 @@ checkpointed.
+    --file-locks                 handle file locks, for safety
+    --pre-dump                   dump container's memory information only, leave the container running after this
+    --manage-cgroups-mode value  cgroups mode: 'soft' (default), 'full' and 'strict'
+-   --empty-ns value             create a namespace, but don't restore its properies
++   --empty-ns value             create a namespace, but don't restore its properties
+diff --git a/restore.go b/restore.go
+index 06f635f..7ddc337 100644
+--- a/restore.go
++++ b/restore.go
+@@ -80,7 +80,7 @@ using the runc checkpoint command.`,
+ 		},
+ 		cli.StringSliceFlag{
+ 			Name:  "empty-ns",
+-			Usage: "create a namespace, but don't restore its properies",
++			Usage: "create a namespace, but don't restore its properties",
+ 		},
+ 	},
+ 	Action: func(context *cli.Context) error {
+-- 
+2.7.4.3
+

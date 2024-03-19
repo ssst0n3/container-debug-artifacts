@@ -1,0 +1,142 @@
+From 489e5bfbed5faff99d1fa48c146bd5a4f17b9c67 Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Mon, 6 Nov 2023 15:38:11 -0800
+Subject: [PATCH] runc delete: do not ignore error from destroy
+
+If container.Destroy() has failed, runc destroy still return 0, which is
+wrong and can result in other issues down the line.
+
+Let's always return error from destroy in runc delete.
+
+For runc checkpoint and runc run, we still treat it as a warning.
+
+Co-authored-by: Zhang Tianyang <burning9699@gmail.com>
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ checkpoint.go                   |  7 ++++++-
+ delete.go                       |  7 ++-----
+ libcontainer/container_linux.go |  5 ++++-
+ restore.go                      |  6 +++++-
+ utils_linux.go                  | 10 +++-------
+ 5 files changed, 20 insertions(+), 15 deletions(-)
+
+diff --git a/checkpoint.go b/checkpoint.go
+index 9b5663f..76e1991 100644
+--- a/checkpoint.go
++++ b/checkpoint.go
+@@ -10,6 +10,7 @@ import (
+ 
+ 	"github.com/opencontainers/runc/libcontainer"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
++	"github.com/Sirupsen/logrus"
+ 	"github.com/urfave/cli"
+ )
+ 
+@@ -55,7 +56,11 @@ checkpointed.`,
+ 		if status == libcontainer.Created {
+ 			fatalf("Container cannot be checkpointed in created state")
+ 		}
+-		defer destroy(container)
++		defer func() {
++			if err := container.Destroy(); err != nil {
++				logrus.Warn(err)
++			}
++		}()
+ 		options := criuOptions(context)
+ 		// these are the mandatory criu options for a container
+ 		setPageServer(context, options)
+diff --git a/delete.go b/delete.go
+index 6db2978..94945cd 100644
+--- a/delete.go
++++ b/delete.go
+@@ -18,8 +18,7 @@ func killContainer(container libcontainer.Container) error {
+ 	for i := 0; i < 10; i++ {
+ 		time.Sleep(100 * time.Millisecond)
+ 		if err := container.Signal(syscall.Signal(0), false); err != nil {
+-			destroy(container)
+-			return nil
++			return container.Destroy()
+ 		}
+ 	}
+ 	return fmt.Errorf("container init still running")
+@@ -72,7 +71,7 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
+ 		}
+ 		switch s {
+ 		case libcontainer.Stopped:
+-			destroy(container)
++			return container.Destroy()
+ 		case libcontainer.Created:
+ 			return killContainer(container)
+ 		default:
+@@ -82,7 +81,5 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
+ 				return fmt.Errorf("cannot delete container %s that is not stopped: %s\n", id, s)
+ 			}
+ 		}
+-
+-		return nil
+ 	},
+ }
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 217308e..e0fb8b4 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -565,7 +565,10 @@ func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
+ func (c *linuxContainer) Destroy() error {
+ 	c.m.Lock()
+ 	defer c.m.Unlock()
+-	return c.state.destroy()
++	if err := c.state.destroy(); err != nil {
++		return fmt.Errorf("unable to destroy container: %w", err)
++	}
++	return nil
+ }
+ 
+ func (c *linuxContainer) Pause() error {
+diff --git a/restore.go b/restore.go
+index 7ddc337..4ba0a76 100644
+--- a/restore.go
++++ b/restore.go
+@@ -164,7 +164,11 @@ func restoreContainer(context *cli.Context, spec *specs.Spec, config *configs.Co
+ 	// that created it.
+ 	detach := context.Bool("detach")
+ 	if !detach {
+-		defer destroy(container)
++		defer func() {
++			if err := container.Destroy(); err != nil {
++				logrus.Warn(err)
++			}
++		}()
+ 	}
+ 	process := &libcontainer.Process{}
+ 	tty, err := setupIO(process, rootuid, rootgid, false, detach, "")
+diff --git a/utils_linux.go b/utils_linux.go
+index df98cf9..2ba5d6a 100644
+--- a/utils_linux.go
++++ b/utils_linux.go
+@@ -105,12 +105,6 @@ func newProcess(p specs.Process, init bool) (*libcontainer.Process, error) {
+ 	return lp, nil
+ }
+ 
+-func destroy(container libcontainer.Container) {
+-	if err := container.Destroy(); err != nil {
+-		logrus.Error(err)
+-	}
+-}
+-
+ // setupIO modifies the given process config according to the options.
+ func setupIO(process *libcontainer.Process, rootuid, rootgid int, createTTY, detach bool, sockpath string) (*tty, error) {
+ 	if createTTY {
+@@ -305,7 +299,9 @@ func (r *runner) run(config *specs.Process) (int, error) {
+ 
+ func (r *runner) destroy() {
+ 	if r.shouldDestroy {
+-		destroy(r.container)
++		if err := r.container.Destroy(); err != nil {
++			logrus.Warn(err)
++		}
+ 	}
+ }
+ 
+-- 
+2.33.0
+

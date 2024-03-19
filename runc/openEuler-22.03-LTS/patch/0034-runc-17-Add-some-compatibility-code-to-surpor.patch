@@ -1,0 +1,50 @@
+From 661a5bf6a414ded19e8722e81ea20f6218d9b7de Mon Sep 17 00:00:00 2001
+From: yangshukui <yangshukui@huawei.com>
+Date: Fri, 20 Apr 2018 22:38:32 +0800
+Subject: [PATCH 34/94] runc-17: Add some compatibility code to surport
+ docker's liverestore from docker-1.11.2 to docker-17.06
+
+[Changelog]: Add some compatibility code to surport docker's liverestore from docker-1.11.2 to docker-17.06
+
+[Author]:Shukui Yang <yangshukui@huawei.com>
+
+Change-Id: I376cc81f781727ea8d0bc61bc0c6e72ca485d880
+Signed-off-by: yangshukui <yangshukui@huawei.com>
+---
+ libcontainer/factory_linux.go | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/factory_linux.go b/libcontainer/factory_linux.go
+index 6a0f855..8bf448a 100644
+--- a/libcontainer/factory_linux.go
++++ b/libcontainer/factory_linux.go
+@@ -10,6 +10,7 @@ import (
+ 	"regexp"
+ 	"runtime/debug"
+ 	"strconv"
++	"strings"
+ 	"syscall"
+ 
+ 	"github.com/docker/docker/pkg/mount"
+@@ -321,7 +322,17 @@ func (l *LinuxFactory) loadState(root, id string) (*State, error) {
+ 	defer f.Close()
+ 	var state *State
+ 	if err := json.NewDecoder(f).Decode(&state); err != nil {
+-		return nil, newGenericError(err, SystemError)
++		if !strings.Contains(err.Error(), "memory_swappiness") {
++			return nil, newGenericError(err, SystemError)
++		}
++
++		if state.BaseState.Config.Cgroups != nil &&
++			state.BaseState.Config.Cgroups.Resources != nil &&
++			state.BaseState.Config.Cgroups.Resources.MemorySwappiness != nil {
++			memorySwappiness := int64(-1)
++			*state.BaseState.Config.Cgroups.Resources.MemorySwappiness = uint64(memorySwappiness)
++		}
++
+ 	}
+ 	return state, nil
+ }
+-- 
+2.7.4.3
+

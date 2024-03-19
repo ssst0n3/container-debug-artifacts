@@ -1,0 +1,57 @@
+From f53243d64903d660e45a186dc11fa0ab13c39621 Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Tue, 9 Aug 2022 18:29:53 +0800
+Subject: [PATCH] runc: change Umask to 0022
+
+---
+ libcontainer/rootfs_linux.go     | 7 +------
+ libcontainer/setns_init_linux.go | 8 --------
+ 2 files changed, 1 insertion(+), 14 deletions(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index b005429..a1bd7e7 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -140,12 +140,7 @@ func finalizeRootfs(config *configs.Config) (err error) {
+ 		}
+ 	}
+ 
+-	umask := libcontainerUtils.SearchLabels(config.Labels, "native.umask")
+-	if umask == "normal" {
+-		syscall.Umask(0022)
+-	} else {
+-		syscall.Umask(0027)
+-	}
++	syscall.Umask(0022)
+ 	return nil
+ }
+ 
+diff --git a/libcontainer/setns_init_linux.go b/libcontainer/setns_init_linux.go
+index 1f7ec98..e6dfbba 100644
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -11,7 +11,6 @@ import (
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+ 	"github.com/opencontainers/runc/libcontainer/seccomp"
+ 	"github.com/opencontainers/runc/libcontainer/system"
+-	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"github.com/opencontainers/selinux/go-selinux/label"
+ )
+ 
+@@ -43,13 +42,6 @@ func (l *linuxSetnsInit) Init() error {
+ 			return err
+ 		}
+ 	}
+-	// set exec process umask to 0027 or 0022 according to container's config
+-	umask := utils.SearchLabels(l.config.Config.Labels, "native.umask")
+-	if umask == "normal" {
+-		syscall.Umask(0022)
+-	} else {
+-		syscall.Umask(0027)
+-	}
+ 	if l.config.NoNewPrivileges {
+ 		if err := system.Prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
+ 			return err
+-- 
+2.30.0
+

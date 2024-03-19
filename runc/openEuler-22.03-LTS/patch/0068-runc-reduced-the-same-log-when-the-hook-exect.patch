@@ -1,0 +1,52 @@
+From 940d7088701fbfe6c2d636251490a1d28f90dbdc Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Thu, 8 Nov 2018 10:19:23 +0800
+Subject: [PATCH 68/94] runc: reduced the same log when the hook
+ exected long time.
+
+reason:runc would print a lot of same logs when the hook executed long time
+
+Change-Id: I7d0b07cca68590c560580967f8d70143764f53d9
+Signed-off-by: panwenxiang <panwenxiang@huawei.com>
+---
+ libcontainer/configs/config.go | 3 ++-
+ script/runc-euleros.spec       | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index f8f9d05..78a7d1d 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -390,6 +390,7 @@ func (c Command) Run(s HookState) error {
+ 		timerCh = timer.C
+ 		warnTime = (*c.Timeout).Seconds() * 0.8
+ 	}
++	timeAfter := time.After(time.Duration(warnTime) * time.Second)
+ 	for {
+ 		select {
+ 		case err := <-errC:
+@@ -398,7 +399,7 @@ func (c Command) Run(s HookState) error {
+ 			cmd.Process.Kill()
+ 			cmd.Wait()
+ 			return fmt.Errorf("hook ran past specified timeout of %.1fs", c.Timeout.Seconds())
+-		case <-time.After(time.Duration(warnTime) * time.Second):
++		case <-timeAfter:
+ 			if c.Timeout != nil {
+ 				logrus.Warnf("hook ran more than 80%% of the timeout %s, ContainerID: %s", *c.Timeout, s.ID)
+ 			} else {
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index e829cb9..025b621 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 7%{?dist}
++Release: 8%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

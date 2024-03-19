@@ -1,0 +1,30 @@
+From 22fab107bdb684d3e7651804b5f6ba3c432652ca Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Mon, 9 Aug 2021 10:16:47 +0800
+Subject: [PATCH] runc:fix systemd cgroup after memory type changed
+
+upstream from
+https://github.com/opencontainers/runc/pull/1573/commits/acaf6897f566c2f592a488c83dafcddec41524be
+
+Signed-off-by: Qiang Huang <h.huangqiang@huawei.com>
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/systemd/apply_systemd.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/systemd/apply_systemd.go b/libcontainer/cgroups/systemd/apply_systemd.go
+index 0411b72..a08a9a9 100644
+--- a/libcontainer/cgroups/systemd/apply_systemd.go
++++ b/libcontainer/cgroups/systemd/apply_systemd.go
+@@ -261,7 +261,7 @@ func (m *Manager) Apply(pid int) error {
+ 
+ 	if c.Resources.Memory != 0 {
+ 		properties = append(properties,
+-			newProp("MemoryLimit", c.Resources.Memory))
++			newProp("MemoryLimit", uint64(c.Resources.Memory)))
+ 	}
+ 
+ 	if c.Resources.CpuShares != 0 {
+-- 
+2.27.0
+

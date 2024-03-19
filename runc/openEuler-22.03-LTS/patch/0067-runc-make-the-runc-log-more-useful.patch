@@ -1,0 +1,137 @@
+From 6bc094ef27ebb55f22c5a1b63ab40a66bf73cc35 Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Sat, 3 Nov 2018 12:42:49 +0800
+Subject: [PATCH 67/94] runc: make the runc log more useful.
+
+reason:changed some log infomation.
+
+Change-Id: Ib6cda4b8a0ef3a441c45f6c435fe11430f8eada8
+Signed-off-by: panwenxiang <panwenxiang@huawei.com>
+---
+ libcontainer/configs/config.go  | 13 +++++++++----
+ libcontainer/container_linux.go |  1 -
+ libcontainer/process_linux.go   |  4 +---
+ libcontainer/state_linux.go     |  1 -
+ main.go                         |  2 +-
+ script/runc-euleros.spec        |  2 +-
+ 6 files changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 9049924..f8f9d05 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -12,7 +12,7 @@ import (
+ )
+ 
+ const (
+-	minHookTimeOut     = 1 * time.Second
++	minHookTimeOut     = 0
+ 	defaultHookTimeOut = 5 * time.Second
+ 	maxHookTimeOut     = 120 * time.Second
+ 	//the runc default timeout is 120s, so set the defaultWarnTime to 80% of the default timeout.
+@@ -353,11 +353,12 @@ func (c Command) Run(s HookState) error {
+ 	if err := cmd.Start(); err != nil {
+ 		return err
+ 	}
+-	if c.Timeout != nil && *c.Timeout < minHookTimeOut {
++	if c.Timeout != nil && *c.Timeout <= minHookTimeOut {
+ 		*c.Timeout = defaultHookTimeOut
++		logrus.Warnf("hook timeout should not be negative or zero, set hook timeout as 5s")
+ 	}
+ 	if c.Timeout != nil && *c.Timeout > maxHookTimeOut {
+-		logrus.Warnf("hook timeout: %s is too long, ContainerID: %s", *c.Timeout, s.ID)
++		logrus.Warnf("hook timeout: %s is too long, use 120s as timeout. ContainerID: %s", *c.Timeout, s.ID)
+ 		*c.Timeout = maxHookTimeOut
+ 	}
+ 	errC := make(chan error, 1)
+@@ -398,7 +399,11 @@ func (c Command) Run(s HookState) error {
+ 			cmd.Wait()
+ 			return fmt.Errorf("hook ran past specified timeout of %.1fs", c.Timeout.Seconds())
+ 		case <-time.After(time.Duration(warnTime) * time.Second):
+-			logrus.Warnf("hook ran more than 80%% of the default timeout, ContainerID: %s", s.ID)
++			if c.Timeout != nil {
++				logrus.Warnf("hook ran more than 80%% of the timeout %s, ContainerID: %s", *c.Timeout, s.ID)
++			} else {
++				logrus.Warnf("hook ran more than 80%% of the default timeout 120s, ContainerID: %s", s.ID)
++			}
+ 		}
+ 	}
+ }
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 61ffb76..8e0ad12 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -358,7 +358,6 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
+ 					}
+ 					return newSystemErrorWithCausef(err, "running poststart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 				}
+-				logrus.Infof("poststart hook %d:%s done", i, hook.Info())
+ 			}
+ 		}
+ 	} else {
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 79b1c4e..4a7321c 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -312,7 +312,6 @@ func (p *initProcess) start() error {
+ 						if err := hook.Run(s); err != nil {
+ 							return newSystemErrorWithCausef(err, "running prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 						}
+-						logrus.Infof("prestart hook %d:%s done", i, hook.Info())
+ 					}
+ 				}
+ 			}
+@@ -337,11 +336,10 @@ func (p *initProcess) start() error {
+ 					Root: p.config.Config.Rootfs,
+ 				}
+ 				for i, hook := range p.config.Config.Hooks.Prestart {
+-					logrus.Infof("run prestart hook %d:%s, ContainerID :%s", i, hook.Info(), s.ID)
++					logrus.Infof("run prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 					if err := hook.Run(s); err != nil {
+ 						return newSystemErrorWithCausef(err, "running prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 					}
+-					logrus.Infof("prestart hook %d:%s done", i, hook.Info())
+ 				}
+ 			}
+ 			// Sync with child.
+diff --git a/libcontainer/state_linux.go b/libcontainer/state_linux.go
+index 26e091b..6fa62c0 100644
+--- a/libcontainer/state_linux.go
++++ b/libcontainer/state_linux.go
+@@ -71,7 +71,6 @@ func runPoststopHooks(c *linuxContainer) error {
+ 				logrus.Errorf("running poststop hook %d: %s failed: %s", i, hook.Info(), err)
+ 				return newSystemErrorWithCausef(err, "running poststop hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 			}
+-			logrus.Infof("poststop hook %d:%s done", i, hook.Info())
+ 		}
+ 	}
+ 	return nil
+diff --git a/main.go b/main.go
+index f15a4ac..e55ff82 100644
+--- a/main.go
++++ b/main.go
+@@ -78,7 +78,7 @@ func main() {
+ 		},
+ 		cli.StringFlag{
+ 			Name:  "log-level",
+-			Usage: "Set the logging level [debug, info, warn, error, fatal, panic]",
++			Usage: "set the logging level [debug, info, warn, error, fatal, panic]",
+ 		},
+ 		cli.StringFlag{
+ 			Name:  "root",
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 08fceee..e829cb9 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 6%{?dist}
++Release: 7%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

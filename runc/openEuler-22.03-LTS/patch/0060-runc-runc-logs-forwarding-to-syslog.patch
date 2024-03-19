@@ -1,0 +1,860 @@
+From c8d9a899d3425c342e83868540ca357bf9f7a661 Mon Sep 17 00:00:00 2001
+From: panwenxiang <panwenxiang@huawei.com>
+Date: Fri, 19 Oct 2018 15:00:34 +0800
+Subject: [PATCH 60/94] runc: runc logs forwarding to syslog
+
+reason:runc logs forwarding to syslog and using the config "--log-level" to control the number of logs
+
+Change-Id: Ia93f6f5c56131ea8558c4b7b7e5c4bec827a1bad
+
+Conflicts:
+	libcontainer/container_linux.go
+	libcontainer/process_linux.go
+	libcontainer/state_linux.go
+---
+ create.go                                          |   3 +-
+ libcontainer/configs/config.go                     |  55 +++++++++---
+ libcontainer/container_linux.go                    |  16 ++--
+ libcontainer/process_linux.go                      |  19 ++--
+ libcontainer/state_linux.go                        |   4 +-
+ main.go                                            |  33 +++++--
+ script/runc-euleros.spec                           |   2 +-
+ vendor/github.com/Sirupsen/logrus/Checklist        |   1 +
+ .../Sirupsen/logrus/hooks/airbrake/airbrake.go     |  54 +++++++++++
+ .../Sirupsen/logrus/hooks/bugsnag/bugsnag.go       |  68 ++++++++++++++
+ .../Sirupsen/logrus/hooks/papertrail/README.md     |  28 ++++++
+ .../Sirupsen/logrus/hooks/papertrail/papertrail.go |  55 ++++++++++++
+ .../Sirupsen/logrus/hooks/sentry/README.md         |  61 +++++++++++++
+ .../Sirupsen/logrus/hooks/sentry/sentry.go         | 100 +++++++++++++++++++++
+ .../Sirupsen/logrus/hooks/syslog/README.md         |  20 +++++
+ .../Sirupsen/logrus/hooks/syslog/syslog.go         |  59 ++++++++++++
+ 16 files changed, 535 insertions(+), 43 deletions(-)
+ create mode 100644 vendor/github.com/Sirupsen/logrus/Checklist
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/airbrake/airbrake.go
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/bugsnag/bugsnag.go
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/papertrail/README.md
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/papertrail/papertrail.go
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/sentry/README.md
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/sentry/sentry.go
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/syslog/README.md
+ create mode 100644 vendor/github.com/Sirupsen/logrus/hooks/syslog/syslog.go
+
+diff --git a/create.go b/create.go
+index 096e8e3..d0246ad 100644
+--- a/create.go
++++ b/create.go
+@@ -1,9 +1,8 @@
+ package main
+ 
+ import (
+-	"os"
+-
+ 	"github.com/urfave/cli"
++	"os"
+ )
+ 
+ var createCommand = cli.Command{
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 49bc7a3..d6bc603 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -4,12 +4,18 @@ import (
+ 	"bytes"
+ 	"encoding/json"
+ 	"fmt"
++	"github.com/Sirupsen/logrus"
++	"github.com/opencontainers/runtime-spec/specs-go"
+ 	"os/exec"
+ 	"strings"
+ 	"time"
++)
+ 
+-	"github.com/Sirupsen/logrus"
+-	"github.com/opencontainers/runtime-spec/specs-go"
++const (
++	minHookTimeOut     = 1 * time.Second
++	defaultHookTimeOut = 5 * time.Second
++	//the runc default timeout is 120s, so set the defaultWarnTime to 80% of the default timeout.
++	defaultWarnTime = 96 * time.Second
+ )
+ 
+ type Rlimit struct {
+@@ -195,9 +201,9 @@ type Config struct {
+ // about the type of the Capabilities field.
+ // Refer to: https://github.com/opencontainers/runtime-spec/commit/37391fb
+ type CompatConfig struct {
+-   Config
+-   Cgroups *CompatCgroup `json:"cgroups"`
+-   Capabilities interface{} `json:"capabilities,omitempty" platform:"linux"`
++	Config
++	Cgroups      *CompatCgroup `json:"cgroups"`
++	Capabilities interface{}   `json:"capabilities,omitempty" platform:"linux"`
+ }
+ 
+ type Hooks struct {
+@@ -342,29 +348,52 @@ func (c Command) Run(s HookState) error {
+ 		Stdout: &stdout,
+ 		Stderr: &stderr,
+ 	}
++	startTime := time.Now()
+ 	if err := cmd.Start(); err != nil {
+ 		return err
+ 	}
++	if c.Timeout != nil && *c.Timeout < minHookTimeOut {
++		*c.Timeout = defaultHookTimeOut
++	}
+ 	errC := make(chan error, 1)
++	var (
++		timerCh  <-chan time.Time
++		warnTime = defaultWarnTime.Seconds()
++	)
+ 	go func() {
+ 		err := cmd.Wait()
+ 		if err != nil {
+ 			err = fmt.Errorf("error running hook: %v, stdout: %s, stderr: %s", err, stdout.String(), stderr.String())
+ 		}
++		elapsedTime := time.Since(startTime)
++		logrus.Infof("hook spends time %s, ContainerID: %s", elapsedTime, s.ID)
++		if c.Timeout != nil {
++			if elapsedTime.Seconds() >= (c.Timeout.Seconds() * 0.8) {
++				logrus.Warnf("elapsed %s, more than 80%% of the timeout %s, ContainerID: %s", elapsedTime, c.Timeout, s.ID)
++			}
++		} else {
++			if elapsedTime.Seconds() >= warnTime {
++				logrus.Warnf("elapsed %s, more than 80%% of the default timeout 120s, ContainerID: %s", elapsedTime, s.ID)
++			}
++		}
+ 		errC <- err
+ 	}()
+-	var timerCh <-chan time.Time
+ 	if c.Timeout != nil {
+ 		timer := time.NewTimer(*c.Timeout)
+ 		defer timer.Stop()
+ 		timerCh = timer.C
++		warnTime = float64(*c.Timeout) * 0.8
+ 	}
+-	select {
+-	case err := <-errC:
+-		return err
+-	case <-timerCh:
+-		cmd.Process.Kill()
+-		cmd.Wait()
+-		return fmt.Errorf("hook ran past specified timeout of %.1fs", c.Timeout.Seconds())
++	for {
++		select {
++		case err := <-errC:
++			return err
++		case <-timerCh:
++			cmd.Process.Kill()
++			cmd.Wait()
++			return fmt.Errorf("hook ran past specified timeout of %.1fs", c.Timeout.Seconds())
++		case <-time.After(time.Duration(warnTime) * time.Second):
++			logrus.Warnf("hook ran more than 80%% of the default timeout, ContainerID: %s", s.ID)
++		}
+ 	}
+ }
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 502a274..ba5dcd6 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -68,9 +68,9 @@ type State struct {
+ }
+ 
+ // CompatState
+-type CompatState struct{
+-   State
+-   Config configs.CompatConfig `json:"config"`
++type CompatState struct {
++	State
++	Config configs.CompatConfig `json:"config"`
+ }
+ 
+ // Container is a libcontainer container object.
+@@ -345,13 +345,13 @@ func (c *linuxContainer) start(process *Process, isInit bool) error {
+ 				Root: c.config.Rootfs,
+ 			}
+ 			for i, hook := range c.config.Hooks.Poststart {
+-				logrus.Infof("run poststart hook %d:%s", i, hook.Info())
++				logrus.Infof("run poststart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 				if err := hook.Run(s); err != nil {
+ 					logrus.Errorf("running poststart hook(%d:%s) failed: %s", i, hook.Info(), err)
+ 					if err := parent.terminate(); err != nil {
+-						logrus.Warn(err)
++						logrus.Warnf("run poststart hook failed: %s, ContainerID: %s", err, s.ID)
+ 					}
+-					return newSystemErrorWithCausef(err, "running poststart hook %d:%s", i, hook.Info())
++					return newSystemErrorWithCausef(err, "running poststart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 				}
+ 				logrus.Infof("poststart hook %d:%s done", i, hook.Info())
+ 			}
+@@ -1319,9 +1319,9 @@ func (c *linuxContainer) criuNotifications(resp *criurpc.CriuResp, process *Proc
+ 				Root: c.config.Rootfs,
+ 			}
+ 			for i, hook := range c.config.Hooks.Prestart {
+-				logrus.Infof("run prestart hook: %d:%s", i, hook.Info())
++				logrus.Infof("run prestart hook: %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 				if err := hook.Run(s); err != nil {
+-					return newSystemErrorWithCausef(err, "running prestart hook %d", i)
++					return newSystemErrorWithCausef(err, "running prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 				}
+ 				logrus.Infof("prestart hook: %d:%s done", i, hook.Info())
+ 			}
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 70e93de..79b1c4e 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -6,18 +6,17 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"github.com/Sirupsen/logrus"
++	"github.com/opencontainers/runc/libcontainer/cgroups"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/system"
++	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"io"
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+ 	"strconv"
+ 	"syscall"
+-
+-	"github.com/Sirupsen/logrus"
+-	"github.com/opencontainers/runc/libcontainer/cgroups"
+-	"github.com/opencontainers/runc/libcontainer/configs"
+-	"github.com/opencontainers/runc/libcontainer/system"
+-	"github.com/opencontainers/runc/libcontainer/utils"
+ )
+ 
+ type parentProcess interface {
+@@ -309,9 +308,9 @@ func (p *initProcess) start() error {
+ 						Root: p.config.Config.Rootfs,
+ 					}
+ 					for i, hook := range p.config.Config.Hooks.Prestart {
+-						logrus.Infof("run prestart hook %d:%s", i, hook.Info())
++						logrus.Infof("run prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 						if err := hook.Run(s); err != nil {
+-							return newSystemErrorWithCausef(err, "running prestart hook %d:%s", i, hook.Info())
++							return newSystemErrorWithCausef(err, "running prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 						}
+ 						logrus.Infof("prestart hook %d:%s done", i, hook.Info())
+ 					}
+@@ -338,9 +337,9 @@ func (p *initProcess) start() error {
+ 					Root: p.config.Config.Rootfs,
+ 				}
+ 				for i, hook := range p.config.Config.Hooks.Prestart {
+-					logrus.Infof("run prestart hook %d:%s", i, hook.Info())
++					logrus.Infof("run prestart hook %d:%s, ContainerID :%s", i, hook.Info(), s.ID)
+ 					if err := hook.Run(s); err != nil {
+-						return newSystemErrorWithCausef(err, "running prestart hook %d:%s", i, hook.Info())
++						return newSystemErrorWithCausef(err, "running prestart hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 					}
+ 					logrus.Infof("prestart hook %d:%s done", i, hook.Info())
+ 				}
+diff --git a/libcontainer/state_linux.go b/libcontainer/state_linux.go
+index b8d2a87..26e091b 100644
+--- a/libcontainer/state_linux.go
++++ b/libcontainer/state_linux.go
+@@ -66,10 +66,10 @@ func runPoststopHooks(c *linuxContainer) error {
+ 			Root: c.config.Rootfs,
+ 		}
+ 		for i, hook := range c.config.Hooks.Poststop {
+-			logrus.Infof("run poststop hook %d:%s", i, hook.Info())
++			logrus.Infof("run poststop hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 			if err := hook.Run(s); err != nil {
+ 				logrus.Errorf("running poststop hook %d: %s failed: %s", i, hook.Info(), err)
+-				return newSystemErrorWithCausef(err, "running poststop hook %d:%s", i, hook.Info())
++				return newSystemErrorWithCausef(err, "running poststop hook %d:%s, ContainerID: %s", i, hook.Info(), s.ID)
+ 			}
+ 			logrus.Infof("poststop hook %d:%s done", i, hook.Info())
+ 		}
+diff --git a/main.go b/main.go
+index 1cb8f4d..f15a4ac 100644
+--- a/main.go
++++ b/main.go
+@@ -2,13 +2,14 @@ package main
+ 
+ import (
+ 	"fmt"
+-	"io"
+-	"os"
+-	"strings"
+-
+ 	"github.com/Sirupsen/logrus"
++	"github.com/Sirupsen/logrus/hooks/syslog"
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+ 	"github.com/urfave/cli"
++	"io"
++	"log/syslog"
++	"os"
++	"strings"
+ )
+ 
+ // version will be populated by the Makefile, read from
+@@ -76,6 +77,10 @@ func main() {
+ 			Usage: "set the format used by logs ('text' (default), or 'json')",
+ 		},
+ 		cli.StringFlag{
++			Name:  "log-level",
++			Usage: "Set the logging level [debug, info, warn, error, fatal, panic]",
++		},
++		cli.StringFlag{
+ 			Name:  "root",
+ 			Value: "/run/runc",
+ 			Usage: "root directory for storage of container state (this should be located in tmpfs)",
+@@ -110,15 +115,17 @@ func main() {
+ 		updateCommand,
+ 	}
+ 	app.Before = func(context *cli.Context) error {
+-		if context.GlobalBool("debug") {
+-			logrus.SetLevel(logrus.DebugLevel)
+-		}
+ 		if path := context.GlobalString("log"); path != "" {
+ 			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_SYNC, 0666)
+ 			if err != nil {
+ 				return err
+ 			}
+ 			logrus.SetOutput(f)
++			hook, serr := logrus_syslog.NewSyslogHook("", "", syslog.LOG_INFO|syslog.LOG_USER, "docker-runc")
++			if serr != nil {
++				fmt.Fprint(f, fmt.Sprintf("Leo: new syslog hook get %s", serr))
++			}
++			logrus.AddHook(hook)
+ 		}
+ 		switch context.GlobalString("log-format") {
+ 		case "text":
+@@ -128,6 +135,18 @@ func main() {
+ 		default:
+ 			return fmt.Errorf("unknown log-format %q", context.GlobalString("log-format"))
+ 		}
++		if logLevel := context.GlobalString("log-level"); logLevel != "" {
++			lvl, err := logrus.ParseLevel(logLevel)
++			if err != nil {
++				fmt.Fprintf(os.Stderr, "Unable to parse logging level: %s\n", logLevel)
++				os.Exit(1)
++			}
++			logrus.SetLevel(lvl)
++		}
++
++		if context.GlobalBool("debug") {
++			logrus.SetLevel(logrus.DebugLevel)
++		}
+ 		return nil
+ 	}
+ 	// If the command returns an error, cli takes upon itself to print
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index c3db7c9..5318ec2 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 2%{?dist}
++Release: 3%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+diff --git a/vendor/github.com/Sirupsen/logrus/Checklist b/vendor/github.com/Sirupsen/logrus/Checklist
+new file mode 100644
+index 0000000..7117b24
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/Checklist
+@@ -0,0 +1 @@
++imported from runc v1.0.0-Release Candidate 2: Godeps/_workspace/src/github.com/Sirupsen/logrus/hooks
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/airbrake/airbrake.go b/vendor/github.com/Sirupsen/logrus/hooks/airbrake/airbrake.go
+new file mode 100644
+index 0000000..b0502c3
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/airbrake/airbrake.go
+@@ -0,0 +1,54 @@
++package airbrake
++
++import (
++	"errors"
++	"fmt"
++
++	"github.com/Sirupsen/logrus"
++	"github.com/tobi/airbrake-go"
++)
++
++// AirbrakeHook to send exceptions to an exception-tracking service compatible
++// with the Airbrake API.
++type airbrakeHook struct {
++	APIKey      string
++	Endpoint    string
++	Environment string
++}
++
++func NewHook(endpoint, apiKey, env string) *airbrakeHook {
++	return &airbrakeHook{
++		APIKey:      apiKey,
++		Endpoint:    endpoint,
++		Environment: env,
++	}
++}
++
++func (hook *airbrakeHook) Fire(entry *logrus.Entry) error {
++	airbrake.ApiKey = hook.APIKey
++	airbrake.Endpoint = hook.Endpoint
++	airbrake.Environment = hook.Environment
++
++	var notifyErr error
++	err, ok := entry.Data["error"].(error)
++	if ok {
++		notifyErr = err
++	} else {
++		notifyErr = errors.New(entry.Message)
++	}
++
++	airErr := airbrake.Notify(notifyErr)
++	if airErr != nil {
++		return fmt.Errorf("Failed to send error to Airbrake: %s", airErr)
++	}
++
++	return nil
++}
++
++func (hook *airbrakeHook) Levels() []logrus.Level {
++	return []logrus.Level{
++		logrus.ErrorLevel,
++		logrus.FatalLevel,
++		logrus.PanicLevel,
++	}
++}
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/bugsnag/bugsnag.go b/vendor/github.com/Sirupsen/logrus/hooks/bugsnag/bugsnag.go
+new file mode 100644
+index 0000000..d20a0f5
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/bugsnag/bugsnag.go
+@@ -0,0 +1,68 @@
++package logrus_bugsnag
++
++import (
++	"errors"
++
++	"github.com/Sirupsen/logrus"
++	"github.com/bugsnag/bugsnag-go"
++)
++
++type bugsnagHook struct{}
++
++// ErrBugsnagUnconfigured is returned if NewBugsnagHook is called before
++// bugsnag.Configure. Bugsnag must be configured before the hook.
++var ErrBugsnagUnconfigured = errors.New("bugsnag must be configured before installing this logrus hook")
++
++// ErrBugsnagSendFailed indicates that the hook failed to submit an error to
++// bugsnag. The error was successfully generated, but `bugsnag.Notify()`
++// failed.
++type ErrBugsnagSendFailed struct {
++	err error
++}
++
++func (e ErrBugsnagSendFailed) Error() string {
++	return "failed to send error to Bugsnag: " + e.err.Error()
++}
++
++// NewBugsnagHook initializes a logrus hook which sends exceptions to an
++// exception-tracking service compatible with the Bugsnag API. Before using
++// this hook, you must call bugsnag.Configure(). The returned object should be
++// registered with a log via `AddHook()`
++//
++// Entries that trigger an Error, Fatal or Panic should now include an "error"
++// field to send to Bugsnag.
++func NewBugsnagHook() (*bugsnagHook, error) {
++	if bugsnag.Config.APIKey == "" {
++		return nil, ErrBugsnagUnconfigured
++	}
++	return &bugsnagHook{}, nil
++}
++
++// Fire forwards an error to Bugsnag. Given a logrus.Entry, it extracts the
++// "error" field (or the Message if the error isn't present) and sends it off.
++func (hook *bugsnagHook) Fire(entry *logrus.Entry) error {
++	var notifyErr error
++	err, ok := entry.Data["error"].(error)
++	if ok {
++		notifyErr = err
++	} else {
++		notifyErr = errors.New(entry.Message)
++	}
++
++	bugsnagErr := bugsnag.Notify(notifyErr)
++	if bugsnagErr != nil {
++		return ErrBugsnagSendFailed{bugsnagErr}
++	}
++
++	return nil
++}
++
++// Levels enumerates the log levels on which the error should be forwarded to
++// bugsnag: everything at or above the "Error" level.
++func (hook *bugsnagHook) Levels() []logrus.Level {
++	return []logrus.Level{
++		logrus.ErrorLevel,
++		logrus.FatalLevel,
++		logrus.PanicLevel,
++	}
++}
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/papertrail/README.md b/vendor/github.com/Sirupsen/logrus/hooks/papertrail/README.md
+new file mode 100644
+index 0000000..ae61e92
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/papertrail/README.md
+@@ -0,0 +1,28 @@
++# Papertrail Hook for Logrus <img src="http://i.imgur.com/hTeVwmJ.png" width="40" height="40" alt=":walrus:" class="emoji" title=":walrus:" />
++
++[Papertrail](https://papertrailapp.com) provides hosted log management. Once stored in Papertrail, you can [group](http://help.papertrailapp.com/kb/how-it-works/groups/) your logs on various dimensions, [search](http://help.papertrailapp.com/kb/how-it-works/search-syntax) them, and trigger [alerts](http://help.papertrailapp.com/kb/how-it-works/alerts).
++
++In most deployments, you'll want to send logs to Papertrail via their [remote_syslog](http://help.papertrailapp.com/kb/configuration/configuring-centralized-logging-from-text-log-files-in-unix/) daemon, which requires no application-specific configuration. This hook is intended for relatively low-volume logging, likely in managed cloud hosting deployments where installing `remote_syslog` is not possible.
++
++## Usage
++
++You can find your Papertrail UDP port on your [Papertrail account page](https://papertrailapp.com/account/destinations). Substitute it below for `YOUR_PAPERTRAIL_UDP_PORT`.
++
++For `YOUR_APP_NAME`, substitute a short string that will readily identify your application or service in the logs.
++
++```go
++import (
++  "log/syslog"
++  "github.com/Sirupsen/logrus"
++  "github.com/Sirupsen/logrus/hooks/papertrail"
++)
++
++func main() {
++  log       := logrus.New()
++  hook, err := logrus_papertrail.NewPapertrailHook("logs.papertrailapp.com", YOUR_PAPERTRAIL_UDP_PORT, YOUR_APP_NAME)
++
++  if err == nil {
++    log.Hooks.Add(hook)
++  }
++}
++```
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/papertrail/papertrail.go b/vendor/github.com/Sirupsen/logrus/hooks/papertrail/papertrail.go
+new file mode 100644
+index 0000000..c0f10c1
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/papertrail/papertrail.go
+@@ -0,0 +1,55 @@
++package logrus_papertrail
++
++import (
++	"fmt"
++	"net"
++	"os"
++	"time"
++
++	"github.com/Sirupsen/logrus"
++)
++
++const (
++	format = "Jan 2 15:04:05"
++)
++
++// PapertrailHook to send logs to a logging service compatible with the Papertrail API.
++type PapertrailHook struct {
++	Host    string
++	Port    int
++	AppName string
++	UDPConn net.Conn
++}
++
++// NewPapertrailHook creates a hook to be added to an instance of logger.
++func NewPapertrailHook(host string, port int, appName string) (*PapertrailHook, error) {
++	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", host, port))
++	return &PapertrailHook{host, port, appName, conn}, err
++}
++
++// Fire is called when a log event is fired.
++func (hook *PapertrailHook) Fire(entry *logrus.Entry) error {
++	date := time.Now().Format(format)
++	msg, _ := entry.String()
++	payload := fmt.Sprintf("<22> %s %s: %s", date, hook.AppName, msg)
++
++	bytesWritten, err := hook.UDPConn.Write([]byte(payload))
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "Unable to send log line to Papertrail via UDP. Wrote %d bytes before error: %v", bytesWritten, err)
++		return err
++	}
++
++	return nil
++}
++
++// Levels returns the available logging levels.
++func (hook *PapertrailHook) Levels() []logrus.Level {
++	return []logrus.Level{
++		logrus.PanicLevel,
++		logrus.FatalLevel,
++		logrus.ErrorLevel,
++		logrus.WarnLevel,
++		logrus.InfoLevel,
++		logrus.DebugLevel,
++	}
++}
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/sentry/README.md b/vendor/github.com/Sirupsen/logrus/hooks/sentry/README.md
+new file mode 100644
+index 0000000..19e58bb
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/sentry/README.md
+@@ -0,0 +1,61 @@
++# Sentry Hook for Logrus <img src="http://i.imgur.com/hTeVwmJ.png" width="40" height="40" alt=":walrus:" class="emoji" title=":walrus:" />
++
++[Sentry](https://getsentry.com) provides both self-hosted and hosted
++solutions for exception tracking.
++Both client and server are
++[open source](https://github.com/getsentry/sentry).
++
++## Usage
++
++Every sentry application defined on the server gets a different
++[DSN](https://www.getsentry.com/docs/). In the example below replace
++`YOUR_DSN` with the one created for your application.
++
++```go
++import (
++  "github.com/Sirupsen/logrus"
++  "github.com/Sirupsen/logrus/hooks/sentry"
++)
++
++func main() {
++  log       := logrus.New()
++  hook, err := logrus_sentry.NewSentryHook(YOUR_DSN, []logrus.Level{
++    logrus.PanicLevel,
++    logrus.FatalLevel,
++    logrus.ErrorLevel,
++  })
++
++  if err == nil {
++    log.Hooks.Add(hook)
++  }
++}
++```
++
++## Special fields
++
++Some logrus fields have a special meaning in this hook,
++these are server_name and logger.
++When logs are sent to sentry these fields are treated differently.
++- server_name (also known as hostname) is the name of the server which
++is logging the event (hostname.example.com)
++- logger is the part of the application which is logging the event.
++In go this usually means setting it to the name of the package.
++
++## Timeout
++
++`Timeout` is the time the sentry hook will wait for a response
++from the sentry server.
++
++If this time elapses with no response from
++the server an error will be returned.
++
++If `Timeout` is set to 0 the SentryHook will not wait for a reply
++and will assume a correct delivery.
++
++The SentryHook has a default timeout of `100 milliseconds` when created
++with a call to `NewSentryHook`. This can be changed by assigning a value to the `Timeout` field:
++
++```go
++hook, _ := logrus_sentry.NewSentryHook(...)
++hook.Timeout = 20*time.Second
++```
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/sentry/sentry.go b/vendor/github.com/Sirupsen/logrus/hooks/sentry/sentry.go
+new file mode 100644
+index 0000000..379f281
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/sentry/sentry.go
+@@ -0,0 +1,100 @@
++package logrus_sentry
++
++import (
++	"fmt"
++	"time"
++
++	"github.com/Sirupsen/logrus"
++	"github.com/getsentry/raven-go"
++)
++
++var (
++	severityMap = map[logrus.Level]raven.Severity{
++		logrus.DebugLevel: raven.DEBUG,
++		logrus.InfoLevel:  raven.INFO,
++		logrus.WarnLevel:  raven.WARNING,
++		logrus.ErrorLevel: raven.ERROR,
++		logrus.FatalLevel: raven.FATAL,
++		logrus.PanicLevel: raven.FATAL,
++	}
++)
++
++func getAndDel(d logrus.Fields, key string) (string, bool) {
++	var (
++		ok  bool
++		v   interface{}
++		val string
++	)
++	if v, ok = d[key]; !ok {
++		return "", false
++	}
++
++	if val, ok = v.(string); !ok {
++		return "", false
++	}
++	delete(d, key)
++	return val, true
++}
++
++// SentryHook delivers logs to a sentry server.
++type SentryHook struct {
++	// Timeout sets the time to wait for a delivery error from the sentry server.
++	// If this is set to zero the server will not wait for any response and will
++	// consider the message correctly sent
++	Timeout time.Duration
++
++	client *raven.Client
++	levels []logrus.Level
++}
++
++// NewSentryHook creates a hook to be added to an instance of logger
++// and initializes the raven client.
++// This method sets the timeout to 100 milliseconds.
++func NewSentryHook(DSN string, levels []logrus.Level) (*SentryHook, error) {
++	client, err := raven.NewClient(DSN, nil)
++	if err != nil {
++		return nil, err
++	}
++	return &SentryHook{100 * time.Millisecond, client, levels}, nil
++}
++
++// Called when an event should be sent to sentry
++// Special fields that sentry uses to give more information to the server
++// are extracted from entry.Data (if they are found)
++// These fields are: logger and server_name
++func (hook *SentryHook) Fire(entry *logrus.Entry) error {
++	packet := &raven.Packet{
++		Message:   entry.Message,
++		Timestamp: raven.Timestamp(entry.Time),
++		Level:     severityMap[entry.Level],
++		Platform:  "go",
++	}
++
++	d := entry.Data
++
++	if logger, ok := getAndDel(d, "logger"); ok {
++		packet.Logger = logger
++	}
++	if serverName, ok := getAndDel(d, "server_name"); ok {
++		packet.ServerName = serverName
++	}
++	packet.Extra = map[string]interface{}(d)
++
++	_, errCh := hook.client.Capture(packet, nil)
++	timeout := hook.Timeout
++	if timeout != 0 {
++		timeoutCh := time.After(timeout)
++		select {
++		case err := <-errCh:
++			return err
++		case <-timeoutCh:
++			return fmt.Errorf("no response from sentry server in %s", timeout)
++		}
++	}
++	return nil
++}
++
++// Levels returns the available logging levels.
++func (hook *SentryHook) Levels() []logrus.Level {
++	return hook.levels
++}
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/syslog/README.md b/vendor/github.com/Sirupsen/logrus/hooks/syslog/README.md
+new file mode 100644
+index 0000000..4dbb8e7
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/syslog/README.md
+@@ -0,0 +1,20 @@
++# Syslog Hooks for Logrus <img src="http://i.imgur.com/hTeVwmJ.png" width="40" height="40" alt=":walrus:" class="emoji" title=":walrus:"/>
++
++## Usage
++
++```go
++import (
++  "log/syslog"
++  "github.com/Sirupsen/logrus"
++  logrus_syslog "github.com/Sirupsen/logrus/hooks/syslog"
++)
++
++func main() {
++  log       := logrus.New()
++  hook, err := logrus_syslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
++
++  if err == nil {
++    log.Hooks.Add(hook)
++  }
++}
++```
+diff --git a/vendor/github.com/Sirupsen/logrus/hooks/syslog/syslog.go b/vendor/github.com/Sirupsen/logrus/hooks/syslog/syslog.go
+new file mode 100644
+index 0000000..b6fa374
+--- /dev/null
++++ b/vendor/github.com/Sirupsen/logrus/hooks/syslog/syslog.go
+@@ -0,0 +1,59 @@
++package logrus_syslog
++
++import (
++	"fmt"
++	"github.com/Sirupsen/logrus"
++	"log/syslog"
++	"os"
++)
++
++// SyslogHook to send logs via syslog.
++type SyslogHook struct {
++	Writer        *syslog.Writer
++	SyslogNetwork string
++	SyslogRaddr   string
++}
++
++// Creates a hook to be added to an instance of logger. This is called with
++// `hook, err := NewSyslogHook("udp", "localhost:514", syslog.LOG_DEBUG, "")`
++// `if err == nil { log.Hooks.Add(hook) }`
++func NewSyslogHook(network, raddr string, priority syslog.Priority, tag string) (*SyslogHook, error) {
++	w, err := syslog.Dial(network, raddr, priority, tag)
++	return &SyslogHook{w, network, raddr}, err
++}
++
++func (hook *SyslogHook) Fire(entry *logrus.Entry) error {
++	line, err := entry.String()
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "Unable to read entry, %v", err)
++		return err
++	}
++
++	switch entry.Level {
++	case logrus.PanicLevel:
++		return hook.Writer.Crit(line)
++	case logrus.FatalLevel:
++		return hook.Writer.Crit(line)
++	case logrus.ErrorLevel:
++		return hook.Writer.Err(line)
++	case logrus.WarnLevel:
++		return hook.Writer.Warning(line)
++	case logrus.InfoLevel:
++		return hook.Writer.Info(line)
++	case logrus.DebugLevel:
++		return hook.Writer.Debug(line)
++	default:
++		return nil
++	}
++}
++
++func (hook *SyslogHook) Levels() []logrus.Level {
++	return []logrus.Level{
++		logrus.PanicLevel,
++		logrus.FatalLevel,
++		logrus.ErrorLevel,
++		logrus.WarnLevel,
++		logrus.InfoLevel,
++		logrus.DebugLevel,
++	}
++}
+-- 
+2.7.4.3
+

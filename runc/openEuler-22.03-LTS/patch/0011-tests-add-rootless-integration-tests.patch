@@ -1,0 +1,449 @@
+From c62d731fc7e928e944e0290df318042c46e80526 Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Wed, 11 May 2016 17:45:00 +1000
+Subject: [PATCH 11/94] tests: add rootless integration tests
+
+This adds targets for rootless integration tests, as well as all of the
+required setup in order to get the tests to run. This includes quite a
+few changes, because of a lot of assumptions about things running as
+root within the bats scripts (which is not true when setting up rootless
+containers).
+
+Change-Id: I2fab9fd3ac984e06a7d3e1e1ac0cd888b1543801
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ Dockerfile                            |  7 ++++++
+ Makefile                              | 11 +++++++--
+ tests/integration/checkpoint.bats     |  5 +++--
+ tests/integration/delete.bats         |  2 ++
+ tests/integration/events.bats         | 12 ++++++++++
+ tests/integration/exec.bats           |  3 +++
+ tests/integration/help.bats           |  1 +
+ tests/integration/helpers.bash        | 23 ++++++++++++++-----
+ tests/integration/ps.bats             | 11 ++++++++-
+ tests/integration/spec.bats           |  4 ++--
+ tests/integration/start_detached.bats |  3 +++
+ tests/integration/start_hello.bats    |  3 +++
+ tests/integration/state.bats          | 42 ++++++++++++++++++++++++++---------
+ tests/integration/tty.bats            | 14 ++++++++++++
+ 14 files changed, 117 insertions(+), 24 deletions(-)
+
+diff --git a/Dockerfile b/Dockerfile
+index c971448..fd9be94 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -6,6 +6,7 @@ RUN echo 'deb http://httpredir.debian.org/debian jessie-backports main' > /etc/a
+ RUN apt-get update && apt-get install -y \
+     build-essential \
+     curl \
++    sudo \
+     gawk \
+     iptables \
+     jq \
+@@ -22,6 +23,12 @@ RUN apt-get update && apt-get install -y \
+     --no-install-recommends \
+     && apt-get clean
+ 
++# Add a dummy user for the rootless integration tests. While runC does
++# not require an entry in /etc/passwd to operate, one of the tests uses
++# `git clone` -- and `git clone` does not allow you to clone a
++# repository if the current uid does not have an entry in /etc/passwd.
++RUN useradd -u1000 -m -d/home/rootless -s/bin/bash rootless
++
+ # install bats
+ RUN cd /tmp \
+     && git clone https://github.com/sstephenson/bats.git \
+diff --git a/Makefile b/Makefile
+index 5fff515..1cecca1 100644
+--- a/Makefile
++++ b/Makefile
+@@ -79,10 +79,10 @@ runcimage:
+ 	docker build -t $(RUNC_IMAGE) .
+ 
+ test:
+-	make unittest integration
++	make unittest integration rootlessintegration
+ 
+ localtest:
+-	make localunittest localintegration
++	make localunittest localintegration localrootlessintegration
+ 
+ unittest: runcimage
+ 	docker run -e TESTFLAGS -t --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) make localunittest
+@@ -96,6 +96,13 @@ integration: runcimage
+ localintegration: all
+ 	bats -t tests/integration${TESTFLAGS}
+ 
++rootlessintegration: runcimage
++	docker run -e TESTFLAGS -t --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) --cap-drop=ALL -u rootless $(RUNC_IMAGE) make localintegration
++
++# FIXME: This should not be separate from rootlessintegration's method of running.
++localrootlessintegration: all
++	sudo -u rootless -H PATH="${PATH}" bats -t tests/integration${TESTFLAGS}
++
+ shell: all
+ 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 
+diff --git a/tests/integration/checkpoint.bats b/tests/integration/checkpoint.bats
+index e91fd65..cd969a8 100644
+--- a/tests/integration/checkpoint.bats
++++ b/tests/integration/checkpoint.bats
+@@ -59,8 +59,9 @@ function teardown() {
+   [[ "${output}" == *"running"* ]]
+ }
+ 
+-@test "checkpoint(pre-dump) and restore" {
+-  requires criu
++@test "checkpoint --pre-dump and restore" {
++  # XXX: currently criu require root containers.
++  requires criu root
+ 
+   # criu does not work with external terminals so..
+   # setting terminal and root:readonly: to false
+diff --git a/tests/integration/delete.bats b/tests/integration/delete.bats
+index cdadd7d..2c11e79 100644
+--- a/tests/integration/delete.bats
++++ b/tests/integration/delete.bats
+@@ -22,11 +22,13 @@ function teardown() {
+   testcontainer test_busybox running
+ 
+   runc kill test_busybox KILL
++  [ "$status" -eq 0 ]
+   # wait for busybox to be in the destroyed state
+   retry 10 1 eval "__runc state test_busybox | grep -q 'stopped'"
+ 
+   # delete test_busybox
+   runc delete test_busybox
++  [ "$status" -eq 0 ]
+ 
+   runc state test_busybox
+   [ "$status" -ne 0 ]
+diff --git a/tests/integration/events.bats b/tests/integration/events.bats
+index 182b721..2350073 100644
+--- a/tests/integration/events.bats
++++ b/tests/integration/events.bats
+@@ -12,6 +12,9 @@ function teardown() {
+ }
+ 
+ @test "events --stats" {
++  # XXX: currently cgroups require root containers.
++  requires root
++
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+@@ -27,6 +30,9 @@ function teardown() {
+ }
+ 
+ @test "events --interval default " {
++  # XXX: currently cgroups require root containers.
++  requires root
++
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+@@ -54,6 +60,9 @@ function teardown() {
+ }
+ 
+ @test "events --interval 1s " {
++  # XXX: currently cgroups require root containers.
++  requires root
++
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+@@ -80,6 +89,9 @@ function teardown() {
+ }
+ 
+ @test "events --interval 100ms " {
++  # XXX: currently cgroups require root containers.
++  requires root
++
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+diff --git a/tests/integration/exec.bats b/tests/integration/exec.bats
+index ba60ea1..f172f9b 100644
+--- a/tests/integration/exec.bats
++++ b/tests/integration/exec.bats
+@@ -112,6 +112,9 @@ function teardown() {
+ }
+ 
+ @test "runc exec --user" {
++  # --user can't work in rootless containers
++  requires root
++
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+diff --git a/tests/integration/help.bats b/tests/integration/help.bats
+index ca404f3..163de2d 100644
+--- a/tests/integration/help.bats
++++ b/tests/integration/help.bats
+@@ -57,6 +57,7 @@ load helpers
+   [ "$status" -eq 0 ]
+   [[ ${lines[1]} =~ runc\ resume+ ]]
+ 
++  # We don't use runc_spec here, because we're just testing the help page.
+   runc spec -h
+   [ "$status" -eq 0 ]
+   [[ ${lines[1]} =~ runc\ spec+ ]]
+diff --git a/tests/integration/helpers.bash b/tests/integration/helpers.bash
+index 6548333..fc8c290 100644
+--- a/tests/integration/helpers.bash
++++ b/tests/integration/helpers.bash
+@@ -4,7 +4,7 @@
+ INTEGRATION_ROOT=$(dirname "$(readlink -f "$BASH_SOURCE")")
+ RUNC="${INTEGRATION_ROOT}/../../runc"
+ RECVTTY="${INTEGRATION_ROOT}/../../contrib/cmd/recvtty/recvtty"
+-GOPATH="${INTEGRATION_ROOT}/../../../.."
++GOPATH="$(mktemp -d --tmpdir runc-integration-gopath.XXXXXX)"
+ 
+ # Test data path.
+ TESTDATA="${INTEGRATION_ROOT}/testdata"
+@@ -27,7 +27,7 @@ KERNEL_MINOR="${KERNEL_VERSION#$KERNEL_MAJOR.}"
+ KERNEL_MINOR="${KERNEL_MINOR%%.*}"
+ 
+ # Root state path.
+-ROOT="$BATS_TMPDIR/runc"
++ROOT=$(mktemp -d "$BATS_TMPDIR/runc.XXXXXX")
+ 
+ # Path to console socket.
+ CONSOLE_SOCKET="$BATS_TMPDIR/console.sock"
+@@ -58,6 +58,17 @@ function __runc() {
+ 	"$RUNC" --root "$ROOT" "$@"
+ }
+ 
++# Wrapper for runc spec.
++function runc_spec() {
++	local args=""
++
++	if [ "$ROOTLESS" -ne 0 ]; then
++		args+="--rootless"
++	fi
++
++	runc spec $args "$@"
++}
++
+ # Fails the current test, providing the error given.
+ function fail() {
+ 	echo "$@" >&2
+@@ -187,18 +198,18 @@ function setup_busybox() {
+ 	if [ ! -e $BUSYBOX_IMAGE ]; then
+ 		curl -o $BUSYBOX_IMAGE -sSL 'https://github.com/docker-library/busybox/raw/a0558a9006ce0dd6f6ec5d56cfd3f32ebeeb815f/glibc/busybox.tar.xz'
+ 	fi
+-	tar -C "$BUSYBOX_BUNDLE"/rootfs -xf "$BUSYBOX_IMAGE"
++	tar --exclude './dev/*' -C "$BUSYBOX_BUNDLE"/rootfs -xf "$BUSYBOX_IMAGE"
+ 	cd "$BUSYBOX_BUNDLE"
+-	runc spec
++	runc_spec
+ }
+ 
+ function setup_hello() {
+ 	setup_recvtty
+ 	run mkdir "$HELLO_BUNDLE"
+ 	run mkdir "$HELLO_BUNDLE"/rootfs
+-	tar -C "$HELLO_BUNDLE"/rootfs -xf "$HELLO_IMAGE"
++	tar --exclude './dev/*' -C "$HELLO_BUNDLE"/rootfs -xf "$HELLO_IMAGE"
+ 	cd "$HELLO_BUNDLE"
+-	runc spec
++	runc_spec
+ 	sed -i 's;"sh";"/hello";' config.json
+ }
+ 
+diff --git a/tests/integration/ps.bats b/tests/integration/ps.bats
+index 7a20015..c000af6 100644
+--- a/tests/integration/ps.bats
++++ b/tests/integration/ps.bats
+@@ -12,6 +12,9 @@ function teardown() {
+ }
+ 
+ @test "ps" {
++  # ps is not supported, it requires cgroups
++  requires root
++
+   # start busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+@@ -24,10 +27,13 @@ function teardown() {
+   runc ps test_busybox
+   [ "$status" -eq 0 ]
+   [[ ${lines[0]} =~ UID\ +PID\ +PPID\ +C\ +STIME\ +TTY\ +TIME\ +CMD+ ]]
+-  [[ "${lines[1]}" == *"root"*[0-9]* ]]
++  [[ "${lines[1]}" == *"$(id -un 2>/dev/null)"*[0-9]* ]]
+ }
+ 
+ @test "ps -f json" {
++  # ps is not supported, it requires cgroups
++  requires root
++
+   # start busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+@@ -43,6 +49,9 @@ function teardown() {
+ }
+ 
+ @test "ps -e -x" {
++  # ps is not supported, it requires cgroups
++  requires root
++
+   # start busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+diff --git a/tests/integration/spec.bats b/tests/integration/spec.bats
+index 79bb690..e9f28fb 100644
+--- a/tests/integration/spec.bats
++++ b/tests/integration/spec.bats
+@@ -26,7 +26,7 @@ function teardown() {
+   [ ! -e config.json ]
+ 
+   # test generation of spec does not return an error
+-  runc spec
++  runc_spec
+   [ "$status" -eq 0 ]
+ 
+   # test generation of spec created our config.json (spec)
+@@ -51,7 +51,7 @@ function teardown() {
+   [ ! -e "$HELLO_BUNDLE"/config.json ]
+ 
+   # test generation of spec does not return an error
+-  runc spec --bundle "$HELLO_BUNDLE"
++  runc_spec --bundle "$HELLO_BUNDLE"
+   [ "$status" -eq 0 ]
+ 
+   # test generation of spec created our config.json (spec)
+diff --git a/tests/integration/start_detached.bats b/tests/integration/start_detached.bats
+index 605fde2..08036dd 100644
+--- a/tests/integration/start_detached.bats
++++ b/tests/integration/start_detached.bats
+@@ -23,6 +23,9 @@ function teardown() {
+ }
+ 
+ @test "runc run detached ({u,g}id != 0)" {
++  # cannot start containers as another user in rootless setup
++  requires root
++
+   # replace "uid": 0 with "uid": 1000
+   # and do a similar thing for gid.
+   sed -i 's;"uid": 0;"uid": 1000;g' config.json
+diff --git a/tests/integration/start_hello.bats b/tests/integration/start_hello.bats
+index 6de65e0..2e93572 100644
+--- a/tests/integration/start_hello.bats
++++ b/tests/integration/start_hello.bats
+@@ -21,6 +21,9 @@ function teardown() {
+ }
+ 
+ @test "runc run ({u,g}id != 0)" {
++  # cannot start containers as another user in rootless setup
++  requires root
++
+   # replace "uid": 0 with "uid": 1000
+   # and do a similar thing for gid.
+   sed -i 's;"uid": 0;"uid": 1000;g' config.json
+diff --git a/tests/integration/state.bats b/tests/integration/state.bats
+index eed2eb3..3772c1e 100644
+--- a/tests/integration/state.bats
++++ b/tests/integration/state.bats
+@@ -11,7 +11,37 @@ function teardown() {
+   teardown_busybox
+ }
+ 
+-@test "state" {
++@test "state (kill + delete)" {
++  runc state test_busybox
++  [ "$status" -ne 0 ]
++
++  # run busybox detached
++  runc run -d --console-socket $CONSOLE_SOCKET test_busybox
++  [ "$status" -eq 0 ]
++
++  # check state
++  wait_for_container 15 1 test_busybox
++
++  testcontainer test_busybox running
++
++  runc kill test_busybox KILL
++  [ "$status" -eq 0 ]
++
++  # wait for busybox to be in the destroyed state
++  retry 10 1 eval "__runc state test_busybox | grep -q 'stopped'"
++
++  # delete test_busybox
++  runc delete test_busybox
++  [ "$status" -eq 0 ]
++
++  runc state test_busybox
++  [ "$status" -ne 0 ]
++}
++
++@test "state (pause + resume)" {
++  # XXX: pause and resume require cgroups.
++  requires root
++
+   runc state test_busybox
+   [ "$status" -ne 0 ]
+ 
+@@ -37,14 +67,4 @@ function teardown() {
+ 
+   # test state of busybox is back to running
+   testcontainer test_busybox running
+-
+-  runc kill test_busybox KILL
+-  # wait for busybox to be in the destroyed state
+-  retry 10 1 eval "__runc state test_busybox | grep -q 'stopped'"
+-
+-  # delete test_busybox
+-  runc delete test_busybox
+-
+-  runc state test_busybox
+-  [ "$status" -ne 0 ]
+ }
+diff --git a/tests/integration/tty.bats b/tests/integration/tty.bats
+index b9a1f10..9e817db 100644
+--- a/tests/integration/tty.bats
++++ b/tests/integration/tty.bats
+@@ -24,6 +24,10 @@ function teardown() {
+ }
+ 
+ @test "runc run [tty owner]" {
++	# tty chmod is not doable in rootless containers.
++	# TODO: this can be made as a change to the gid test.
++	requires root
++
+ 	# Replace sh script with stat.
+ 	sed -i 's/"sh"/"sh", "-c", "stat -c %u:%g $(tty) | tr : \\\\\\\\n"/' config.json
+ 
+@@ -36,6 +40,9 @@ function teardown() {
+ }
+ 
+ @test "runc run [tty owner] ({u,g}id != 0)" {
++	# tty chmod is not doable in rootless containers.
++	requires root
++
+ 	# replace "uid": 0 with "uid": 1000
+ 	# and do a similar thing for gid.
+ 	sed -i 's;"uid": 0;"uid": 1000;g' config.json
+@@ -72,6 +79,10 @@ function teardown() {
+ }
+ 
+ @test "runc exec [tty owner]" {
++	# tty chmod is not doable in rootless containers.
++	# TODO: this can be made as a change to the gid test.
++	requires root
++
+ 	# run busybox detached
+ 	runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+ 	[ "$status" -eq 0 ]
+@@ -90,6 +101,9 @@ function teardown() {
+ }
+ 
+ @test "runc exec [tty owner] ({u,g}id != 0)" {
++	# tty chmod is not doable in rootless containers.
++	requires root
++
+ 	# replace "uid": 0 with "uid": 1000
+ 	# and do a similar thing for gid.
+ 	sed -i 's;"uid": 0;"uid": 1000;g' config.json
+-- 
+2.7.4.3
+

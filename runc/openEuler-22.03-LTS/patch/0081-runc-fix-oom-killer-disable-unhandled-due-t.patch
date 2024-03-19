@@ -1,0 +1,151 @@
+From 1948bc88664ef018f87bd16c004ea2de32be3ec3 Mon Sep 17 00:00:00 2001
+From: caihaomin <caihaomin@huawei.com>
+Date: Mon, 21 Jan 2019 13:50:35 +0800
+Subject: [PATCH 81/94] runc: fix oom-killer-disable unhandled due to
+ the spec
+
+reason:fix oom-killer-disable unhandled due to the spec
+
+Change-Id: I646b0420f8c387906afb80536352259ec1482729
+Signed-off-by: caihaomin <caihaomin@huawei.com>
+---
+ spec.go | 100 +++++++++++++++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 83 insertions(+), 17 deletions(-)
+
+diff --git a/spec.go b/spec.go
+index a15c84e..b33e44c 100644
+--- a/spec.go
++++ b/spec.go
+@@ -7,7 +7,6 @@ import (
+ 	"fmt"
+ 	"io/ioutil"
+ 	"os"
+-	"runtime"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/specconv"
+@@ -117,24 +116,101 @@ generate a proper rootless spec file.`,
+ 
+ func sPtr(s string) *string { return &s }
+ 
++type compatSpec struct {
++	specs.Spec
++	Linux *linux `json:"linux,omitempty" platform:"linux"`
++}
++
++type linux struct {
++	specs.Linux
++	Resources *linuxResources `json:"resources,omitempty"`
++}
++
++type linuxResources struct {
++	specs.LinuxResources
++	Memory *linuxMemory `json:"memory,omitempty"`
++}
++
++type linuxMemory struct {
++	// Memory limit (in bytes).
++	Limit *int64 `json:"limit,omitempty"`
++	// Memory reservation or soft_limit (in bytes).
++	Reservation *int64 `json:"reservation,omitempty"`
++	// Total memory limit (memory + swap).
++	Swap *int64 `json:"swap,omitempty"`
++	// Kernel memory limit (in bytes).
++	Kernel *int64 `json:"kernel,omitempty"`
++	// Kernel memory limit for tcp (in bytes)
++	KernelTCP *int64 `json:"kernelTCP,omitempty"`
++	// How aggressive the kernel will swap memory pages.
++	Swappiness *uint64 `json:"swappiness,omitempty"`
++	// DisableOOMKiller disables the OOM killer for out of memory conditions
++	DisableOOMKiller *bool `json:"disableOOMKiller,omitempty"`
++}
++
+ // loadSpec loads the specification from the provided path.
+ func loadSpec(cPath string) (spec *specs.Spec, err error) {
+-	cf, err := os.Open(cPath)
+-	if err != nil {
++	spec, err = loadOriginSpec(cPath)
++	if err != nil || spec.Linux.Resources.DisableOOMKiller == nil {
++		return loadCompactSpec(cPath)
++	}
++
++	return spec, validateProcessSpec(&spec.Process)
++}
++
++func loadOriginSpec(cPath string) (*specs.Spec, error) {
++	var spec specs.Spec
++	if _, err := os.Stat(cPath); err != nil {
+ 		if os.IsNotExist(err) {
+ 			return nil, fmt.Errorf("JSON specification file %s not found", cPath)
+ 		}
+ 		return nil, err
+ 	}
+-	defer cf.Close()
+ 
+-	if err = json.NewDecoder(cf).Decode(&spec); err != nil {
++	cData, err := ioutil.ReadFile(cPath)
++	if err != nil {
++		return nil, err
++	}
++	if err := json.Unmarshal(cData, &spec); err != nil {
++		return nil, fmt.Errorf("config.json %q error :%v", cPath, err)
++	}
++
++	return &spec, nil
++}
++
++func loadCompactSpec(cPath string) (*specs.Spec, error) {
++	var compatSpec compatSpec
++	cData, err := ioutil.ReadFile(cPath)
++	if err != nil {
++		if os.IsNotExist(err) {
++			return nil, fmt.Errorf("JSON specification file %s not found", cPath)
++		}
+ 		return nil, err
+ 	}
+-	if err = validatePlatform(&spec.Platform); err != nil {
++	if err := json.Unmarshal(cData, &compatSpec); err != nil {
++		return nil, fmt.Errorf("config.json %q error :%v", cPath, err)
++	}
++
++	var spec *specs.Spec
++	if spec, err = updateCompactSpec(&compatSpec); err != nil {
+ 		return nil, err
+ 	}
+-	return spec, validateProcessSpec(&spec.Process)
++
++	return spec, nil
++
++}
++
++func updateCompactSpec(compatSpec *compatSpec) (*specs.Spec, error) {
++	compatjson, _ := json.Marshal(compatSpec)
++	var spec specs.Spec
++	err := json.Unmarshal(compatjson, &spec)
++	if err != nil {
++		return nil, fmt.Errorf("update config failed %v", err)
++	}
++
++	spec.Linux.Resources.DisableOOMKiller = compatSpec.Linux.Resources.Memory.DisableOOMKiller
++
++	return &spec, nil
+ }
+ 
+ func createLibContainerRlimit(rlimit specs.LinuxRlimit) (configs.Rlimit, error) {
+@@ -148,13 +224,3 @@ func createLibContainerRlimit(rlimit specs.LinuxRlimit) (configs.Rlimit, error)
+ 		Soft: rlimit.Soft,
+ 	}, nil
+ }
+-
+-func validatePlatform(platform *specs.Platform) error {
+-	if platform.OS != runtime.GOOS {
+-		return fmt.Errorf("target os %s mismatch with current os %s", platform.OS, runtime.GOOS)
+-	}
+-	if platform.Arch != runtime.GOARCH {
+-		return fmt.Errorf("target arch %s mismatch with current arch %s", platform.Arch, runtime.GOARCH)
+-	}
+-	return nil
+-}
+-- 
+2.7.4.3
+

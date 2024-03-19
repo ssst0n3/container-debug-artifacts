@@ -1,0 +1,50 @@
+From 38b4e1c3faeb7dfb3001dbd34fb2fe904a642367 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Fri, 13 Dec 2019 03:40:47 +0800
+Subject: [PATCH 1/5] runc: Fixes #1585 config.Namespaces is empty
+ when accessed
+
+reason:Fixes #1585 config.Namespaces is empty when accessed
+
+Change-Id: I734db7320eee233a1b5a3c6f569506b7304e764e
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/specconv/spec_linux.go | 15 +++++++--------
+ 1 file changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index 8c4567c..0cbc66f 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -180,13 +180,6 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 	}
+ 
+ 	exists := false
+-	if config.Namespaces.Contains(configs.NEWNET) && config.Namespaces.PathOf(configs.NEWNET) == "" {
+-		config.Networks = []*configs.Network{
+-			{
+-				Type: "loopback",
+-			},
+-		}
+-	}
+ 	for _, m := range spec.Mounts {
+ 		config.Mounts = append(config.Mounts, createLibcontainerMount(cwd, m))
+ 	}
+@@ -217,7 +210,13 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+ 			}
+ 			config.Namespaces.Add(t, ns.Path)
+ 		}
+-
++		if config.Namespaces.Contains(configs.NEWNET) && config.Namespaces.PathOf(configs.NEWNET) == "" {
++			config.Networks = []*configs.Network{
++				{
++					Type: "loopback",
++				},
++			}
++		}
+ 		// set extra path masking for libcontainer for the various unsafe places in proc
+ 		config.MaskPaths = spec.Linux.MaskedPaths
+ 		config.ReadonlyPaths = spec.Linux.ReadonlyPaths
+-- 
+1.8.3.1
+

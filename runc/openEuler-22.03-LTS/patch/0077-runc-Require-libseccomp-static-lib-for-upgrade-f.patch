@@ -1,0 +1,38 @@
+From 2f064ca54d3e1fcc41bc8f97c3ac8a354de34fff Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Wed, 12 Dec 2018 18:53:48 +0800
+Subject: [PATCH 77/94] runc:  Require libseccomp-static lib for
+ upgrade
+
+reason:Require libseccomp-static lib for upgrade
+
+Change-Id: Ie80603197c95ab36ce23c11c8b0807b43d0fb916
+Signed-off-by: zhangsong34 <zhangsong34@huawei.com>
+---
+ script/runc-euleros.spec | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 34f9d22..f21ac08 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 15%{?dist}
++Release: 16%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+@@ -18,6 +18,7 @@ BuildRequires: make
+ BuildRequires: libseccomp-devel 
+ BuildRequires: libselinux-devel
+ 
++BuildRequires: libseccomp-static
+ 
+ %description
+ runc is a CLI tool for spawning and running containers according to the OCF specification
+-- 
+2.7.4.3
+

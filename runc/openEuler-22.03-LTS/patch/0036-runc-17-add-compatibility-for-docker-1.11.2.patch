@@ -1,0 +1,208 @@
+From 988554ab5c12971383bc717cda615ca672953cd5 Mon Sep 17 00:00:00 2001
+From: yangshukui <yangshukui@huawei.com>
+Date: Fri, 18 May 2018 11:03:48 +0800
+Subject: [PATCH 36/94] runc-17: add compatibility for docker-1.11.2
+
+[Changelog]: add compatibility for docker-1.11.2
+[Author]: Shukui Yang
+
+Change-Id: I188db47db8f4bcd744ac8218bfe966de48e97c22
+Signed-off-by: yangshukui <yangshukui@huawei.com>
+---
+ libcontainer/configs/cgroup_unix.go |   6 +++
+ libcontainer/configs/config.go      |  11 ++++
+ libcontainer/container_linux.go     |   6 +++
+ libcontainer/factory_linux.go       | 102 +++++++++++++++++++++++++++++++-----
+ 4 files changed, 113 insertions(+), 12 deletions(-)
+
+diff --git a/libcontainer/configs/cgroup_unix.go b/libcontainer/configs/cgroup_unix.go
+index e654960..75a3db0 100644
+--- a/libcontainer/configs/cgroup_unix.go
++++ b/libcontainer/configs/cgroup_unix.go
+@@ -33,6 +33,12 @@ type Cgroup struct {
+ 	*Resources
+ }
+ 
++// CompatCgroup
++type CompatCgroup struct {
++   Cgroup
++   MemorySwappiness interface{} `json:"memory_swappiness"`
++}
++
+ type Resources struct {
+ 	// If this is true allow access to any kind of device within the container.  If false, allow access only to devices explicitly listed in the allowed_devices list.
+ 	// Deprecated
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index af25972..3a2e824 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -188,6 +188,17 @@ type Config struct {
+ 	Rootless bool `json:"rootless"`
+ }
+ 
++// CompatConfig is a structure inheriting from spec.Process defined
++// in runtime-spec/specs-go package. The goal is to be compatible with
++// both v1.0.0-rc4 and v1.0.0-rc5 since the latter introduced a change
++// about the type of the Capabilities field.
++// Refer to: https://github.com/opencontainers/runtime-spec/commit/37391fb
++type CompatConfig struct {
++   Config
++   Cgroups *CompatCgroup `json:"cgroups"`
++   Capabilities interface{} `json:"capabilities,omitempty" platform:"linux"`
++}
++
+ type Hooks struct {
+ 	// Prestart commands are executed after the container namespaces are created,
+ 	// but before the user supplied command is executed from init.
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index ea6ef4c..f4eec7e 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -66,6 +66,12 @@ type State struct {
+ 	ExternalDescriptors []string `json:"external_descriptors,omitempty"`
+ }
+ 
++// CompatState
++type CompatState struct{
++   State
++   Config configs.CompatConfig `json:"config"`
++}
++
+ // Container is a libcontainer container object.
+ //
+ // Each container is thread-safe within the same process. Since a container can
+diff --git a/libcontainer/factory_linux.go b/libcontainer/factory_linux.go
+index 8bf448a..b533346 100644
+--- a/libcontainer/factory_linux.go
++++ b/libcontainer/factory_linux.go
+@@ -10,8 +10,9 @@ import (
+ 	"regexp"
+ 	"runtime/debug"
+ 	"strconv"
+-	"strings"
+ 	"syscall"
++	"io/ioutil"
++	"errors"
+ 
+ 	"github.com/docker/docker/pkg/mount"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+@@ -311,28 +312,105 @@ func (l *LinuxFactory) StartInitialization() (err error) {
+ 	return i.Init()
+ }
+ 
+-func (l *LinuxFactory) loadState(root, id string) (*State, error) {
+-	f, err := os.Open(filepath.Join(root, stateFilename))
++func (l *LinuxFactory) updateStateCapabilites(compatState *CompatState, configPath string) error {
++	needUpdate := false
++
++	// In spec v1.0.0-rc4, capabilities was a list of strings. This was changed
++	// to an object with v1.0.0-rc5.
++	// Check for the interface type to support both the versions.
++	capabilities := compatState.Config.Capabilities
++	switch caps := capabilities.(type) {
++	case []interface{}:
++		var list []string
++		for _, str := range caps {
++			list = append(list, str.(string))
++		}
++
++		c := configs.Capabilities{
++			Bounding:    list,
++			Effective:   list,
++			Inheritable: list,
++			Ambient:     list,
++			Permitted:   list,
++		}
++		compatState.Config.Capabilities = c
++		needUpdate = true
++	}
++
++	//In spec v1.0.0-rc4, MemorySwappiness  was a *int64. This was changed
++	// to an *uint64 with v1.0.0-rc5.
++	if compatState.Config.Cgroups != nil &&
++		compatState.Config.Cgroups.MemorySwappiness != nil {
++		memorySwappiness, ok := compatState.Config.Cgroups.MemorySwappiness.(float64)
++		if ok {
++			var memSize int64 = int64(memorySwappiness)
++			if memSize < 0 {
++				memSize = 0
++				var memUSize uint64 = uint64(memSize-1)
++				compatState.Config.Cgroups.MemorySwappiness = &memUSize
++				needUpdate = true
++			}
++		}
++	}
++
++	if needUpdate {
++		f, err := os.Create(configPath)
++		if err != nil {
++			return err
++		}
++		defer f.Close()
++		if err := json.NewEncoder(f).Encode(&compatState); err != nil {
++			return err
++		}
++		return nil
++	}
++
++	return errors.New("updateStateCapabilites unexpected format for capabilities")
++}
++
++func (l *LinuxFactory) loadOriginState(configPath string) (*State, error) {
++	f, err := os.Open(configPath)
+ 	if err != nil {
+ 		if os.IsNotExist(err) {
+-			return nil, newGenericError(fmt.Errorf("container %q does not exist", id), ContainerNotExists)
++			return nil, newGenericError(err, ContainerNotExists)
+ 		}
+ 		return nil, newGenericError(err, SystemError)
+ 	}
+ 	defer f.Close()
+ 	var state *State
+ 	if err := json.NewDecoder(f).Decode(&state); err != nil {
+-		if !strings.Contains(err.Error(), "memory_swappiness") {
+-			return nil, newGenericError(err, SystemError)
+-		}
++		return nil, newGenericError(err, SystemError)
++	}
++	return state, nil
++}
+ 
+-		if state.BaseState.Config.Cgroups != nil &&
+-			state.BaseState.Config.Cgroups.Resources != nil &&
+-			state.BaseState.Config.Cgroups.Resources.MemorySwappiness != nil {
+-			memorySwappiness := int64(-1)
+-			*state.BaseState.Config.Cgroups.Resources.MemorySwappiness = uint64(memorySwappiness)
++func (l *LinuxFactory) loadCompatState(configPath string) (*State, error) {
++	dt, err := ioutil.ReadFile(configPath)
++	if err != nil {
++		if os.IsNotExist(err) {
++			return nil, newGenericError(err, ContainerNotExists)
+ 		}
++		return nil, newGenericError(err, SystemError)
++	}
+ 
++	var state *CompatState
++	if err := json.Unmarshal(dt, &state); err != nil {
++		return nil, newGenericError(err, SystemError)
++	}
++
++	err = l.updateStateCapabilites(state, configPath)
++	if err != nil {
++		return nil, newGenericError(err, SystemError)
++	}
++
++	return l.loadOriginState(configPath)
++}
++
++func (l *LinuxFactory) loadState(root, id string) (*State, error) {
++	configPath := filepath.Join(root, stateFilename)
++	state, err := l.loadOriginState(configPath)
++	if err != nil {
++		return l.loadCompatState(configPath)
+ 	}
+ 	return state, nil
+ }
+-- 
+2.7.4.3
+

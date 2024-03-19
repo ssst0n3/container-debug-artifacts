@@ -1,0 +1,37 @@
+From ee3660e477b70d73812390ad96d82681f82f2e9b Mon Sep 17 00:00:00 2001
+From: Denys Smirnov <denys@sourced.tech>
+Date: Tue, 6 Mar 2018 23:31:31 +0100
+Subject: [PATCH 49/94] cgroups/fs: fix NPE on Destroy than no
+ cgroups are set
+
+
+[Changelog]: Currently Manager accepts nil cgroups when calling Apply, but
+it will panic then trying to call Destroy with the same config.
+
+This is cherry-picked from runc upstream:
+ https://github.com/opencontainers/runc/pull/1752
+[Author]:Shukui Yang
+
+Change-Id: Ie7aba1d1b7086a82a1d186038fb5e6c09b617f75
+Signed-off-by: Denys Smirnov <denys@sourced.tech>
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/cgroups/fs/apply_raw.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/fs/apply_raw.go b/libcontainer/cgroups/fs/apply_raw.go
+index 22d82ac..66debae 100644
+--- a/libcontainer/cgroups/fs/apply_raw.go
++++ b/libcontainer/cgroups/fs/apply_raw.go
+@@ -152,7 +152,7 @@ func (m *Manager) Apply(pid int) (err error) {
+ }
+ 
+ func (m *Manager) Destroy() error {
+-	if m.Cgroups.Paths != nil {
++	if m.Cgroups == nil || m.Cgroups.Paths != nil {
+ 		return nil
+ 	}
+ 	m.mu.Lock()
+-- 
+2.7.4.3
+

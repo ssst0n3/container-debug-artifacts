@@ -1,0 +1,29 @@
+From c8e1e988fa6509070411c7dbab50edb40092aaf9 Mon Sep 17 00:00:00 2001
+From: jingrui <jingrui@huawei.com>
+Date: Sat, 23 Feb 2019 14:13:49 +0800
+Subject: [PATCH 66/94] runc: bump to v1.0.0.rc3.6
+
+reason:bump version to v1.0.0.rc3.6
+
+Change-Id: I79890c41c7934f96ee6e1d676450d7832cc90f73
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ script/runc-euleros.spec | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 0ba07be..08fceee 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 5%{?dist}
++Release: 6%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

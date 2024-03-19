@@ -1,0 +1,143 @@
+From 7c81f032861f5654e9063e5af82c7794401682f4 Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Tue, 10 May 2016 22:22:13 +1000
+Subject: [PATCH 10/94] integration: added root requires
+
+This is in preperation of allowing us to run the integration test suite
+on rootless containers.
+
+Change-Id: I38f7115df4f931857659892b07745c86507d14bf
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ tests/integration/cgroups.bats    |  8 ++++++--
+ tests/integration/checkpoint.bats |  3 ++-
+ tests/integration/helpers.bash    | 10 +++++++++-
+ tests/integration/kill.bats       |  1 -
+ tests/integration/pause.bats      |  6 ++++++
+ tests/integration/update.bats     |  6 +++++-
+ 6 files changed, 28 insertions(+), 6 deletions(-)
+
+diff --git a/tests/integration/cgroups.bats b/tests/integration/cgroups.bats
+index 9ab6f43..90095a7 100644
+--- a/tests/integration/cgroups.bats
++++ b/tests/integration/cgroups.bats
+@@ -28,7 +28,9 @@ function check_cgroup_value() {
+ }
+ 
+ @test "runc update --kernel-memory (initialized)" {
+-    requires cgroups_kmem
++	# XXX: currently cgroups require root containers.
++    requires cgroups_kmem root
++
+     # Add cgroup path
+     sed -i 's/\("linux": {\)/\1\n    "cgroupsPath": "\/runc-cgroups-integration-test",/'  ${BUSYBOX_BUNDLE}/config.json
+ 
+@@ -56,7 +58,9 @@ EOF
+ }
+ 
+ @test "runc update --kernel-memory (uninitialized)" {
+-    requires cgroups_kmem
++	# XXX: currently cgroups require root containers.
++    requires cgroups_kmem root
++
+     # Add cgroup path
+     sed -i 's/\("linux": {\)/\1\n    "cgroupsPath": "\/runc-cgroups-integration-test",/'  ${BUSYBOX_BUNDLE}/config.json
+ 
+diff --git a/tests/integration/checkpoint.bats b/tests/integration/checkpoint.bats
+index 34d1b03..e91fd65 100644
+--- a/tests/integration/checkpoint.bats
++++ b/tests/integration/checkpoint.bats
+@@ -12,7 +12,8 @@ function teardown() {
+ }
+ 
+ @test "checkpoint and restore" {
+-  requires criu
++  # XXX: currently criu require root containers.
++  requires criu root
+ 
+   # criu does not work with external terminals so..
+   # setting terminal and root:readonly: to false
+diff --git a/tests/integration/helpers.bash b/tests/integration/helpers.bash
+index e4c2cb9..6548333 100644
+--- a/tests/integration/helpers.bash
++++ b/tests/integration/helpers.bash
+@@ -40,6 +40,9 @@ CGROUP_CPU_BASE_PATH=$(grep "cgroup" /proc/self/mountinfo | gawk 'toupper($NF) ~
+ KMEM="${CGROUP_MEMORY_BASE_PATH}/memory.kmem.limit_in_bytes"
+ RT_PERIOD="${CGROUP_CPU_BASE_PATH}/cpu.rt_period_us"
+ 
++# Check if we're in rootless mode.
++ROOTLESS=$(id -u)
++
+ # Wrapper for runc.
+ function runc() {
+ 	run __runc "$@"
+@@ -68,7 +71,12 @@ function requires() {
+ 		case $var in
+ 			criu)
+ 				if [ ! -e "$CRIU" ]; then
+-					skip "Test requires ${var}."
++					skip "test requires ${var}"
++				fi
++				;;
++			root)
++				if [ "$ROOTLESS" -ne 0 ]; then
++					skip "test requires ${var}"
+ 				fi
+ 				;;
+ 			cgroups_kmem)
+diff --git a/tests/integration/kill.bats b/tests/integration/kill.bats
+index a049de6..74246fa 100644
+--- a/tests/integration/kill.bats
++++ b/tests/integration/kill.bats
+@@ -13,7 +13,6 @@ function teardown() {
+ 
+ 
+ @test "kill detached busybox" {
+-
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+diff --git a/tests/integration/pause.bats b/tests/integration/pause.bats
+index 2f46a6c..30d98b5 100644
+--- a/tests/integration/pause.bats
++++ b/tests/integration/pause.bats
+@@ -12,6 +12,9 @@ function teardown() {
+ }
+ 
+ @test "runc pause and resume" {
++  # XXX: currently cgroups require root containers.
++  requires root
++
+   # run busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+@@ -34,6 +37,9 @@ function teardown() {
+ }
+ 
+ @test "runc pause and resume with nonexist container" {
++  # XXX: currently cgroups require root containers.
++  requires root
++
+   # run test_busybox detached
+   runc run -d --console-socket $CONSOLE_SOCKET test_busybox
+   [ "$status" -eq 0 ]
+diff --git a/tests/integration/update.bats b/tests/integration/update.bats
+index 9aaf1b9..4a6bf7f 100644
+--- a/tests/integration/update.bats
++++ b/tests/integration/update.bats
+@@ -50,7 +50,11 @@ function check_cgroup_value() {
+ 
+ # TODO: test rt cgroup updating
+ @test "update" {
+-    requires cgroups_kmem
++    # XXX: currently cgroups require root containers.
++	# XXX: Also, this test should be split into separate sections so that we
++	#      can skip kmem without skipping update tests overall.
++    requires cgroups_kmem root
++
+     # run a few busyboxes detached
+     runc run -d --console-socket $CONSOLE_SOCKET test_update
+     [ "$status" -eq 0 ]
+-- 
+2.7.4.3
+

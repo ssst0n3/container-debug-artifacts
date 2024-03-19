@@ -1,0 +1,45 @@
+From 6594d5c042a2253386820a640b3a7087e07d0df2 Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Thu, 9 Jul 2020 15:56:54 +0800
+Subject: [PATCH] runc: fix permission denied
+
+reason: when exec as root and config.Cwd is not owned by root,
+exec will fail because root doesn't have the caps.
+
+Signed-off-by: Kurnia D Win <kurnia.d.win@gmail.com>
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/init_linux.go | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
+index 2a93431..73505ef 100644
+--- a/libcontainer/init_linux.go
++++ b/libcontainer/init_linux.go
+@@ -118,6 +118,11 @@ func finalizeNamespace(config *initConfig) error {
+ 	if err := utils.CloseExecFrom(config.PassedFilesCount + 3); err != nil {
+ 		return err
+ 	}
++	if config.Cwd != "" {
++		if err := syscall.Chdir(config.Cwd); err != nil {
++			return fmt.Errorf("chdir to cwd (%q) set in config.json failed: %v", config.Cwd, err)
++		}
++	}
+ 
+ 	capabilities := &configs.Capabilities{}
+ 	if config.Capabilities != nil {
+@@ -146,11 +151,6 @@ func finalizeNamespace(config *initConfig) error {
+ 	if err := w.ApplyCaps(); err != nil {
+ 		return err
+ 	}
+-	if config.Cwd != "" {
+-		if err := syscall.Chdir(config.Cwd); err != nil {
+-			return fmt.Errorf("chdir to cwd (%q) set in config.json failed: %v", config.Cwd, err)
+-		}
+-	}
+ 	return nil
+ }
+ 
+-- 
+1.8.3.1
+

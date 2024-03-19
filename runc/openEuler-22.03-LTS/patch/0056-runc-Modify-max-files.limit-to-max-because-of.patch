@@ -1,0 +1,61 @@
+From 0a5b23584d79bba18429905c43774bc50a117b4b Mon Sep 17 00:00:00 2001
+From: yangshukui <yangshukui@huawei.com>
+Date: Sat, 4 Nov 2017 14:55:40 +0800
+Subject: [PATCH 56/94] runc: Modify max files.limit to max because of
+ the change of kernel.
+
+[Changelog]: Kernel has change max files.limit to max,So docker need
+change too.
+
+Change-Id: Iea6e5eb1dddf0f8d2d55ee3182ed78957cb09a75
+Signed-off-by: yangshukui <yangshukui@huawei.com>
+---
+ libcontainer/cgroups/fs/files.go | 16 ++--------------
+ 1 file changed, 2 insertions(+), 14 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/files.go b/libcontainer/cgroups/fs/files.go
+index f2e253a..3214a82 100644
+--- a/libcontainer/cgroups/fs/files.go
++++ b/libcontainer/cgroups/fs/files.go
+@@ -4,28 +4,15 @@ package fs
+ 
+ import (
+ 	"fmt"
+-	"io/ioutil"
+ 	"strconv"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ )
+ 
+-var (
+-	defaultFilesMax = "8192"
+-)
+-
+ type FilesGroup struct {
+ }
+ 
+-func init() {
+-	contents, err := ioutil.ReadFile("/proc/sys/fs/file-max")
+-	if err != nil {
+-		return
+-	}
+-	defaultFilesMax = string(contents)
+-}
+-
+ func (s *FilesGroup) Name() string {
+ 	return "files"
+ }
+@@ -40,7 +27,8 @@ func (s *FilesGroup) Apply(d *cgroupData) error {
+ 
+ func (s *FilesGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 	if cgroup.Resources.FilesLimit != 0 {
+-		limit := defaultFilesMax
++		// "max" is the fallback value.
++		limit := "max"
+ 		if cgroup.Resources.FilesLimit > 0 {
+ 			limit = strconv.FormatInt(cgroup.Resources.FilesLimit, 10)
+ 		}
+-- 
+2.7.4.3
+

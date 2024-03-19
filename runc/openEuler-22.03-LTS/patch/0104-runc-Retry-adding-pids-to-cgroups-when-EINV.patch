@@ -1,0 +1,79 @@
+From 5424fc3a4dca03773bd322add2b1528706ea75d3 Mon Sep 17 00:00:00 2001
+From: chenditang <chenditang@huawei.com>
+Date: Sun, 30 Jun 2019 21:41:19 -0400
+Subject: [PATCH] runc:  Retry adding pids to cgroups when EINVAL
+ occurs
+
+reason:The kernel will sometimes return EINVAL when writing a pid
+to a cgroup.procs file. It does so when the task being added still
+has the state TASK_NEW.
+See: https://elixir.bootlin.com/linux/v4.8/source/kernel/sched/core.c#L8286
+
+Co-authored-by: Danail Branekov <danailster@gmail.com>
+
+Signed-off-by: Tom Godkin <tgodkin@pivotal.io>
+Signed-off-by: Danail Branekov <danailster@gmail.com>
+Signed-off-by: chenditang <chenditang@huawei.com>
+---
+ libcontainer/cgroups/utils.go | 38 ++++++++++++++++++++++++++++++++++----
+ 1 file changed, 34 insertions(+), 4 deletions(-)
+
+diff --git a/libcontainer/cgroups/utils.go b/libcontainer/cgroups/utils.go
+index 5db3734..c9411ee 100644
+--- a/libcontainer/cgroups/utils.go
++++ b/libcontainer/cgroups/utils.go
+@@ -14,6 +14,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/docker/go-units"
++	"golang.org/x/sys/unix"
+ )
+ 
+ const (
+@@ -438,10 +439,39 @@ func WriteCgroupProc(dir string, pid int) error {
+ 	}
+ 
+ 	// Dont attach any pid to the cgroup if -1 is specified as a pid
+-	if pid != -1 {
+-		if err := ioutil.WriteFile(filepath.Join(dir, CgroupProcesses), []byte(strconv.Itoa(pid)), 0700); err != nil {
+-			return fmt.Errorf("failed to write %v to %v: %v", pid, CgroupProcesses, err)
++	if pid == -1 {
++		return nil
++	}
++
++	cgroupProcessesFile, err := os.OpenFile(filepath.Join(dir, CgroupProcesses), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0700)
++	if err != nil {
++		return fmt.Errorf("failed to write %v to %v: %v", pid, CgroupProcesses, err)
++	}
++	defer cgroupProcessesFile.Close()
++
++	for i := 0; i < 5; i++ {
++		_, err = cgroupProcessesFile.WriteString(strconv.Itoa(pid))
++		if err == nil {
++			return nil
+ 		}
++
++		// EINVAL might mean that the task being added to cgroup.procs is in state
++		// TASK_NEW. We should attempt to do so again.
++		if isEINVAL(err) {
++			time.Sleep(30 * time.Millisecond)
++			continue
++		}
++
++		return fmt.Errorf("failed to write %v to %v: %v", pid, CgroupProcesses, err)
++	}
++	return err
++}
++
++func isEINVAL(err error) bool {
++	switch err := err.(type) {
++	case *os.PathError:
++		return err.Err == unix.EINVAL
++	default:
++		return false
+ 	}
+-	return nil
+ }
+-- 
+1.8.3.1
+

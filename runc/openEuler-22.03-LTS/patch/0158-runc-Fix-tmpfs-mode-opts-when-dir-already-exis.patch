@@ -1,0 +1,59 @@
+From 6594fe86b84fa69fd44172694d9495b37e5c653a Mon Sep 17 00:00:00 2001
+From: Brian Goff <cpuguy83@gmail.com>
+Date: Thu, 22 Jun 2023 21:35:19 +0000
+Subject: [PATCH 2/4] Fix tmpfs mode opts when dir already exists
+ 
+When a directory already exists (or after a container is restarted) the
+perms of the directory being mounted to were being used even when a
+different permission is set on the tmpfs mount options.
+ 
+This prepends the original directory perms to the mount options.
+If the perms were already set in the mount opts then those perms will
+win.
+This eliminates the need to perform a chmod after mount entirely.
+ 
+Reference:https://github.com/opencontainers/runc/commit/9fa8b9de3e74c306db186494187fb789f0fdab4d
+ 
+Signed-off-by: Brian Goff <cpuguy83@gmail.com>
+---
+ libcontainer/rootfs_linux.go | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 97707ca..d43867b 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -212,11 +212,16 @@ func mountToRootfs(m *configs.Mount, rootfs, mountLabel string) error {
+ 	case "tmpfs":
+ 		copyUp := m.Extensions&configs.EXT_COPYUP == configs.EXT_COPYUP
+ 		tmpDir := ""
+-		stat, err := os.Stat(dest)
+-		if err != nil {
++		if stat, err := os.Stat(dest); err != nil {
+ 			if err := os.MkdirAll(dest, 0755); err != nil {
+ 				return err
+ 			}
++		} else {
++			dt := fmt.Sprintf("mode=%04o", stat.Mode())
++			if m.Data != "" {
++				dt = dt + "," + m.Data
++			}
++			m.Data = dt
+ 		}
+ 		if copyUp {
+ 			tmpDir, err = ioutil.TempDir("/tmp", "runctmpdir")
+@@ -245,11 +250,6 @@ func mountToRootfs(m *configs.Mount, rootfs, mountLabel string) error {
+ 				return errMsg
+ 			}
+ 		}
+-		if stat != nil {
+-			if err = os.Chmod(dest, stat.Mode()); err != nil {
+-				return err
+-			}
+-		}
+ 		return nil
+ 	case "bind":
+ 		stat, err := os.Stat(m.Source)
+-- 
+2.33.0
+

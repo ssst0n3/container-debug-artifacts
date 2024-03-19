@@ -1,0 +1,182 @@
+From f3daefee2a044dac912afccb52a724a7fe710caf Mon Sep 17 00:00:00 2001
+From: wang--ge <wang__ge@126.com>
+Date: Sat, 19 Nov 2022 15:43:51 +0800
+Subject: [PATCH] honor seccomp errnoRet
+
+---
+ libcontainer/configs/config.go                |  1 +
+ libcontainer/integration/seccomp_test.go      | 72 +++++++++++++++++++
+ libcontainer/seccomp/seccomp_linux.go         | 12 +++-
+ libcontainer/specconv/spec_linux.go           |  1 +
+ .../runtime-spec/specs-go/config.go           |  1 +
+ 5 files changed, 84 insertions(+), 3 deletions(-)
+
+diff --git a/libcontainer/configs/config.go b/libcontainer/configs/config.go
+index 9074c86..7dd4bde 100644
+--- a/libcontainer/configs/config.go
++++ b/libcontainer/configs/config.go
+@@ -78,6 +78,7 @@ type Arg struct {
+ type Syscall struct {
+ 	Name     string `json:"name"`
+ 	Action   Action `json:"action"`
++	ErrnoRet *uint  `json:"errnoRet"`
+ 	Priority uint8  `json:"priority,omitempty"`
+ 	Args     []*Arg `json:"args"`
+ }
+diff --git a/libcontainer/integration/seccomp_test.go b/libcontainer/integration/seccomp_test.go
+index 8e2c7cd..72d0d96 100644
+--- a/libcontainer/integration/seccomp_test.go
++++ b/libcontainer/integration/seccomp_test.go
+@@ -12,6 +12,78 @@ import (
+ 	libseccomp "github.com/seccomp/libseccomp-golang"
+ )
+ 
++func TestSeccompDenyGetcwdWithErrno(t *testing.T) {
++	if testing.Short() {
++		return
++	}
++	
++	rootfs, err := newRootfs()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer remove(rootfs)
++
++	errnoRet := uint(syscall.ESRCH)
++
++	config := newTemplateConfig(rootfs)
++	config.Seccomp = &configs.Seccomp{
++		DefaultAction: configs.Allow,
++		Syscalls: []*configs.Syscall{
++			{
++				Name:     "getcwd",
++				Action:   configs.Errno,
++				ErrnoRet: &errnoRet,
++			},
++		},
++	}
++
++	container, err := newContainer(config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer container.Destroy()
++
++	buffers := newStdBuffers()
++	pwd := &libcontainer.Process{
++		Cwd:    "/",
++		Args:   []string{"pwd"},
++		Env:    standardEnvironment,
++		Stdin:  buffers.Stdin,
++		Stdout: buffers.Stdout,
++		Stderr: buffers.Stderr,
++		Init:   true,
++	}
++
++	err = container.Run(pwd)
++	if err != nil {
++		t.Fatal(err)
++	}
++	ps, err := pwd.Wait()
++	if err == nil {
++		t.Fatal("Expecting error (negative return code); instead exited cleanly!")
++	}
++
++	var exitCode int
++	status := ps.Sys().(syscall.WaitStatus)
++	if status.Exited() {
++		exitCode = status.ExitStatus()
++	} else if status.Signaled() {
++		exitCode = -int(status.Signal())
++	} else {
++		t.Fatalf("Unrecognized exit reason!")
++	}
++
++	if exitCode == 0 {
++		t.Fatalf("Getcwd should fail with negative exit code, instead got %d!", exitCode)
++	}
++
++	expected := "pwd: getcwd: No such process"
++	actual := strings.Trim(buffers.Stderr.String(), "\n")
++	if actual != expected {
++		t.Fatalf("Expected output %s but got %s\n", expected, actual)
++	}
++}
++
+ func TestSeccompDenyGetcwd(t *testing.T) {
+ 	if testing.Short() {
+ 		return
+diff --git a/libcontainer/seccomp/seccomp_linux.go b/libcontainer/seccomp/seccomp_linux.go
+index 0c97da6..26cec43 100644
+--- a/libcontainer/seccomp/seccomp_linux.go
++++ b/libcontainer/seccomp/seccomp_linux.go
+@@ -36,7 +36,7 @@ func InitSeccomp(config *configs.Seccomp) error {
+ 		return fmt.Errorf("cannot initialize Seccomp - nil config passed")
+ 	}
+ 
+-	defaultAction, err := getAction(config.DefaultAction)
++	defaultAction, err := getAction(config.DefaultAction, nil)
+ 	if err != nil {
+ 		return fmt.Errorf("error initializing seccomp - invalid default action")
+ 	}
+@@ -100,17 +100,23 @@ func IsEnabled() bool {
+ }
+ 
+ // Convert Libcontainer Action to Libseccomp ScmpAction
+-func getAction(act configs.Action) (libseccomp.ScmpAction, error) {
++func getAction(act configs.Action, errnoRet *uint) (libseccomp.ScmpAction, error) {
+ 	switch act {
+ 	case configs.Kill:
+ 		return actKill, nil
+ 	case configs.Errno:
++		if errnoRet != nil {
++			return libseccomp.ActErrno.SetReturnCode(int16(*errnoRet)), nil
++		}
+ 		return actErrno, nil
+ 	case configs.Trap:
+ 		return actTrap, nil
+ 	case configs.Allow:
+ 		return actAllow, nil
+ 	case configs.Trace:
++		if errnoRet != nil {
++			return libseccomp.ActTrace.SetReturnCode(int16(*errnoRet)), nil
++		}
+ 		return actTrace, nil
+ 	default:
+ 		return libseccomp.ActInvalid, fmt.Errorf("invalid action, cannot use in rule")
+@@ -173,7 +179,7 @@ func matchCall(filter *libseccomp.ScmpFilter, call *configs.Syscall) error {
+ 	}
+ 
+ 	// Convert the call's action to the libseccomp equivalent
+-	callAct, err := getAction(call.Action)
++	callAct, err := getAction(call.Action, call.ErrnoRet)
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index 0cbc66f..8177739 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -758,6 +758,7 @@ func setupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
+ 			newCall := configs.Syscall{
+ 				Name:     name,
+ 				Action:   newAction,
++				ErrnoRet: call.ErrnoRet,
+ 				Priority: call.Priority,
+ 				Args:     []*configs.Arg{},
+ 			}
+diff --git a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+index 8439744..ec8096a 100644
+--- a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
++++ b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+@@ -556,6 +556,7 @@ type LinuxSeccompArg struct {
+ type LinuxSyscall struct {
+ 	Names    []string           `json:"names"`
+ 	Action   LinuxSeccompAction `json:"action"`
++	ErrnoRet *uint              `json:"errnoRet,omitempty"`
+ 	Priority uint8              `json:"priority,omitempty"`
+ 	Args     []LinuxSeccompArg  `json:"args"`
+ 	Comment  string             `json:"comment"`
+-- 
+2.27.0
+

@@ -1,0 +1,26 @@
+From a85aeb42b93daa85e901cd77e4261961893505e7 Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Mon, 24 Jul 2023 19:52:36 +0800
+Subject: [PATCH] runc:enable cpuset preferred by
+ /proc/sys/kernel/sched_util_low_pct file state
+
+---
+ libcontainer/cgroups/fs/cpuset.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/fs/cpuset.go b/libcontainer/cgroups/fs/cpuset.go
+index ce1389d..bc82abc 100644
+--- a/libcontainer/cgroups/fs/cpuset.go
++++ b/libcontainer/cgroups/fs/cpuset.go
+@@ -113,7 +113,7 @@ func parseCpuset(cpuset string) (string, string, error) {
+ }
+ 
+ func (s *CpusetGroup) setCpuset(path, cpuset string) error {
+-	if _, err := os.Stat(filepath.Join(path, "cpuset.preferred_cpus")); err != nil {
++	if _, err := os.Stat("/proc/sys/kernel/sched_util_low_pct"); err != nil {
+ 		var ret error
+ 		if err := writeFile(path, "cpuset.cpus", cpuset); err != nil {
+ 			ret = fmt.Errorf("failed to set cpuset.cpus, %v", err)
+-- 
+2.33.0
+

@@ -1,0 +1,32 @@
+From b736c8d450f52150db3b8f7a6a247338028b57bf Mon Sep 17 00:00:00 2001
+From: jingrui <jingrui@huawei.com>
+Date: Tue, 13 Nov 2018 17:21:19 +0800
+Subject: [PATCH 72/94] Revert "runc: not print "no such file" when cli
+ err"
+
+reason: This reverts commit 21c62a431c2795f59a82312dd9b8a437a1b2ca28.
+
+Change-Id: Ice19acd48ef916a3d992d9f4d06cf056361565e5
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ main.go | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/main.go b/main.go
+index be3fba6..e55ff82 100644
+--- a/main.go
++++ b/main.go
+@@ -163,9 +163,6 @@ type FatalWriter struct {
+ }
+ 
+ func (f *FatalWriter) Write(p []byte) (n int, err error) {
+-	errStr := string(p)
+-	if !strings.Contains(errStr, "state.json: no such file or directory") {
+-		logrus.Error(errStr)
+-	}
++	logrus.Error(string(p))
+ 	return f.cliErrWriter.Write(p)
+ }
+-- 
+2.7.4.3
+

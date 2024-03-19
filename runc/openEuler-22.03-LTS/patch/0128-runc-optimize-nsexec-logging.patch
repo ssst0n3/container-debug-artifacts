@@ -1,0 +1,280 @@
+From f59d2013c5b1e3a7a500023848c5a366301bddec Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Tue, 8 Jun 2021 17:08:59 +0800
+Subject: [PATCH] runc: optimize nsexec logging
+
+Conflict:NA
+Reference:https://github.com/opencontainers/runc/pull/2034/commits
+          https://github.com/opencontainers/runc/commit/64bb59f5920b15d886cb2be52aede641fd4a047b
+          https://github.com/opencontainers/runc/commit/201d60c51d0b78afb780841443200a25d63493a6
+
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/container_linux.go | 21 ++++++++++
+ libcontainer/logs/logs.go       | 68 +++++++++++++++++++++++++++++++++
+ libcontainer/nsenter/nsexec.c   | 53 +++++++++++++++++++++++--
+ libcontainer/process_linux.go   |  3 ++
+ 4 files changed, 142 insertions(+), 3 deletions(-)
+ create mode 100644 libcontainer/logs/logs.go
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 73192866..7be84a63 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -23,6 +23,7 @@ import (
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/criurpc"
++	"github.com/opencontainers/runc/libcontainer/logs"
+ 	"github.com/opencontainers/runc/libcontainer/system"
+ 	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"github.com/syndtr/gocapability/capability"
+@@ -309,6 +310,17 @@ func (c *linuxContainer) start(process *Process) error {
+ 	if err != nil {
+ 		return newSystemErrorWithCause(err, "creating new parent process")
+ 	}
++
++	if logsDone := logs.ForwardLogs(); logsDone != nil {
++		defer func() {
++			select {
++			case <-logsDone:
++			case <-time.After(3 * time.Second):
++				logrus.Warnf("wait child close logfd timeout")
++			}
++		}()
++	}
++
+ 	if err := parent.start(); err != nil {
+ 		printCgroupInfo(c.config.Cgroups.Path)
+ 		// terminate the process to ensure that it properly is reaped.
+@@ -408,6 +420,9 @@ func (c *linuxContainer) newParentProcess(p *Process) (parentProcess, error) {
+ 	if err != nil {
+ 		return nil, newSystemErrorWithCause(err, "creating new init pipe")
+ 	}
++	if err := logs.InitLogPipe(); err != nil {
++		return nil, fmt.Errorf("Unable to create the log pipe:  %s", err)
++	}
+ 	cmd, err := c.commandTemplate(p, childPipe)
+ 	if err != nil {
+ 		return nil, newSystemErrorWithCause(err, "creating new command template")
+@@ -450,6 +465,12 @@ func (c *linuxContainer) commandTemplate(p *Process, childPipe *os.File) (*exec.
+ 	cmd.Env = append(cmd.Env,
+ 		fmt.Sprintf("_LIBCONTAINER_INITPIPE=%d", stdioFdCount+len(cmd.ExtraFiles)-1),
+ 	)
++
++	cmd.ExtraFiles = append(cmd.ExtraFiles, logs.ChildLogPipe)
++	cmd.Env = append(cmd.Env,
++		fmt.Sprintf("_LIBCONTAINER_LOGPIPE=%d", stdioFdCount+len(cmd.ExtraFiles)-1),
++	)
++
+ 	// NOTE: when running a container with no PID namespace and the parent process spawning the container is
+ 	// PID1 the pdeathsig is being delivered to the container's init process by the kernel for some reason
+ 	// even with the parent still running.
+diff --git a/libcontainer/logs/logs.go b/libcontainer/logs/logs.go
+new file mode 100644
+index 00000000..219fe382
+--- /dev/null
++++ b/libcontainer/logs/logs.go
+@@ -0,0 +1,68 @@
++package logs
++
++import (
++	"bufio"
++	"encoding/json"
++	"os"
++
++	"github.com/Sirupsen/logrus"
++)
++
++var (
++	ParentLogPipe *os.File
++	ChildLogPipe  *os.File
++)
++
++func InitLogPipe() error {
++	var err error
++	if ParentLogPipe == nil {
++		ParentLogPipe, ChildLogPipe, err = os.Pipe()
++	}
++	return err
++}
++
++func CloseChild() {
++	if ChildLogPipe != nil {
++		ChildLogPipe.Close()
++		ChildLogPipe = nil
++	}
++}
++
++func ForwardLogs() chan error {
++	done := make(chan error, 1)
++	if ParentLogPipe == nil {
++		close(done)
++		return done
++	}
++
++	s := bufio.NewScanner(ParentLogPipe)
++	go func() {
++		for s.Scan() {
++			processEntry(s.Bytes())
++		}
++		if err := ParentLogPipe.Close(); err != nil {
++			logrus.Errorf("error closing log source: %v", err)
++		}
++		// The only error we want to return is when reading from
++		// logPipe has failed.
++		done <- s.Err()
++		close(done)
++	}()
++
++	return done
++}
++
++func processEntry(text []byte) {
++	if len(text) == 0 {
++		return
++	}
++	var jl struct {
++		Level string `json:"level"`
++		Msg   string `json:"msg"`
++	}
++	if err := json.Unmarshal(text, &jl); err != nil {
++		logrus.Errorf("failed to decode %q to json: %v", text, err)
++		return
++	}
++	logrus.Errorf("error from child %s", jl.Msg)
++}
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 4f73b1a1..8e059e09 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -77,6 +77,8 @@ struct nlconfig_t {
+ 	size_t oom_score_adj_len;
+ };
+ 
++int logfd;
++
+ /*
+  * List of netlink message types sent to us as part of bootstrapping the init.
+  * These constants are defined in libcontainer/message_linux.go.
+@@ -111,6 +113,26 @@ int setns(int fd, int nstype)
+ }
+ #endif
+ 
++void write_log_with_info(const char *level, const char *function, int line, const char *format, ...)
++{
++	static char message[1024];
++	va_list args;
++
++	if (logfd < 0 || level == NULL)
++		return;
++
++	va_start(args, format);
++	if (vsnprintf(message, 1024, format, args) < 0)
++		return;
++	va_end(args);
++
++	if (dprintf(logfd, "{\"level\":\"%s\", \"msg\": \"%s:%d %s\"}\n", level, function, line, message) < 0)
++		return;
++}
++
++#define logerr(fmt, ...) \
++	write_log_with_info("error", __FUNCTION__, __LINE__, fmt, ##__VA_ARGS__)
++
+ /* XXX: This is ugly. */
+ static int syncfd = -1;
+ 
+@@ -118,13 +140,13 @@ static int syncfd = -1;
+ #define bail(fmt, ...)								\
+ 	do {									\
+ 		int ret = __COUNTER__ + 1;					\
+-		fprintf(stderr, "nsenter: " fmt ": %m\n", ##__VA_ARGS__);	\
++		logerr("nsenter: " fmt ": %m", ##__VA_ARGS__);	\
+ 		if (syncfd >= 0) {						\
+ 			enum sync_t s = SYNC_ERR;				\
+ 			if (write(syncfd, &s, sizeof(s)) != sizeof(s))		\
+-				fprintf(stderr, "nsenter: failed: write(s)");	\
++				logerr("nsenter: failed: write(s)");	\
+ 			if (write(syncfd, &ret, sizeof(ret)) != sizeof(ret))	\
+-				fprintf(stderr, "nsenter: failed: write(ret)");	\
++				logerr("nsenter: failed: write(ret)");	\
+ 		}								\
+ 		exit(ret);							\
+ 	} while(0)
+@@ -259,6 +281,24 @@ static int initpipe(void)
+ 	return pipenum;
+ }
+ 
++static void setup_logpipe(void)
++{
++	char *logpipe, *endptr;
++
++	logpipe = getenv("_LIBCONTAINER_LOGPIPE");
++	if (logpipe == NULL || *logpipe == '\0') {
++		logfd = -1;
++		return;
++	}
++
++	logfd = strtol(logpipe, &endptr, 10);
++	if (logpipe == endptr || *endptr != '\0') {
++		fprintf(stderr, "unable to parse _LIBCONTAINER_LOGPIPE, value: %s\n", logpipe);
++		/* It is too early to use bail */
++		exit(1);
++	}
++}
++
+ /* Returns the clone(2) flag for a namespace, given the name of a namespace. */
+ static int nsflag(char *name)
+ {
+@@ -442,6 +482,12 @@ void nsexec(void)
+ 	int sync_child_pipe[2], sync_grandchild_pipe[2];
+ 	struct nlconfig_t config = {0};
+ 
++	/*
++	 * Setup a pipe to send logs to the parent. This should happen
++	 * first, because bail will use that pipe.
++	 */
++	setup_logpipe();
++
+ 	/*
+ 	 * If we don't have an init pipe, just return to the go routine.
+ 	 * We'll only get an init pipe for start or exec.
+@@ -867,6 +913,7 @@ void nsexec(void)
+ 			/* Free netlink data. */
+ 			nl_free(&config);
+ 
++			close(logfd);
+ 			/* Finish executing, let the Go runtime take over. */
+ 			return;
+ 		}
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 25fe30b5..0c5cd47c 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -18,6 +18,7 @@ import (
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libcontainer/system"
+ 	"github.com/opencontainers/runc/libcontainer/utils"
++	"github.com/opencontainers/runc/libcontainer/logs"
+ 	"golang.org/x/sys/unix"
+ )
+ 
+@@ -73,6 +74,7 @@ func (p *setnsProcess) start() (err error) {
+ 	defer p.parentPipe.Close()
+ 	err = p.cmd.Start()
+ 	p.childPipe.Close()
++	logs.CloseChild()
+ 	if err != nil {
+ 		return newSystemErrorWithCause(err, "starting setns process")
+ 	}
+@@ -256,6 +258,7 @@ func (p *initProcess) start() error {
+ 	p.process.ops = p
+ 	p.childPipe.Close()
+ 	p.rootDir.Close()
++	logs.CloseChild()
+ 	if err != nil {
+ 		p.process.ops = nil
+ 		return newSystemErrorWithCause(err, "starting init process command")
+-- 
+2.27.0
+

@@ -1,0 +1,73 @@
+From 18f5c5e20e342af002b0edb2295f64ea12632cc4 Mon Sep 17 00:00:00 2001
+From: wangfengtu <wangfengtu@huawei.com>
+Date: Fri, 21 Dec 2018 15:02:16 +0800
+Subject: [PATCH 80/94] runc:  support specify umask
+
+reason:support specify umask.
+Umask can be 0022 or 0027(default) by specify umask when
+start container by command `docker create/run` or start
+daemon by command `dockerd`. For example:
+$ dockerd --annotation native.umask=normal
+$ dockerd --annotation native.umask=secure
+$ docker run --exec-opt native.umask=normal
+$ docker run --exec-opt native.umask=secure
+`normal` reparent umask is 0022, `secure`
+reparent umask is 0027.
+
+Change-Id: I49166759ad42dca0ac1f9755f85592e93951c249
+Signed-off-by: lujingxiao <lujingxiao@huawei.com>
+Signed-off-by: wangfengtu <wangfengtu@huawei.com>
+---
+ libcontainer/rootfs_linux.go     |  7 ++++++-
+ libcontainer/setns_init_linux.go | 10 ++++++++--
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 38bdd1b..3dd5113 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -136,7 +136,12 @@ func finalizeRootfs(config *configs.Config) (err error) {
+ 		}
+ 	}
+ 
+-	syscall.Umask(0027)
++	umask := libcontainerUtils.SearchLabels(config.Labels, "native.umask")
++	if umask == "normal" {
++		syscall.Umask(0022)
++	} else {
++		syscall.Umask(0027)
++	}
+ 	return nil
+ }
+ 
+diff --git a/libcontainer/setns_init_linux.go b/libcontainer/setns_init_linux.go
+index e8e969a..b3fab21 100644
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -11,6 +11,7 @@ import (
+ 	"github.com/opencontainers/runc/libcontainer/keys"
+ 	"github.com/opencontainers/runc/libcontainer/seccomp"
+ 	"github.com/opencontainers/runc/libcontainer/system"
++	"github.com/opencontainers/runc/libcontainer/utils"
+ 	"github.com/opencontainers/selinux/go-selinux/label"
+ )
+ 
+@@ -41,8 +42,13 @@ func (l *linuxSetnsInit) Init() error {
+ 			return err
+ 		}
+ 	}
+-	// set exec process umask to 0027 according to secure policy
+-	syscall.Umask(0027)
++	// set exec process umask to 0027 or 0022 according to container's config
++	umask := utils.SearchLabels(l.config.Config.Labels, "native.umask")
++	if umask == "normal" {
++		syscall.Umask(0022)
++	} else {
++		syscall.Umask(0027)
++	}
+ 	if l.config.NoNewPrivileges {
+ 		if err := system.Prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
+ 			return err
+-- 
+2.7.4.3
+

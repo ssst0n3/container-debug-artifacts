@@ -1,0 +1,59 @@
+From 394c8695f22731938994fdc5d7db678762119481 Mon Sep 17 00:00:00 2001
+From: Wentao Zhang <zhangwentao234@huawei.com>
+Date: Tue, 20 Dec 2016 06:21:10 -0500
+Subject: [PATCH 59/94] Fix setup cgroup before prestart hook
+
+* User Case:
+User could use prestart hook to add block devices to container. so the
+hook should have a way to set the permissions of the devices.
+
+Just move cgroup config operation before prestart hook will work.
+Conflicts:
+	libcontainer/process_linux.go
+
+Change-Id: I991138f4e686c4268e0629204ce1eae6452fdecf
+Signed-off-by: Wentao Zhang <zhangwentao234@huawei.com>
+---
+ libcontainer/process_linux.go | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 9064c0e..70e93de 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -286,9 +286,6 @@ func (p *initProcess) start() error {
+ 	ierr := parseSync(p.parentPipe, func(sync *syncT) error {
+ 		switch sync.Type {
+ 		case procReady:
+-			if err := p.manager.Set(p.config.Config); err != nil {
+-				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
+-			}
+ 			// set rlimits, this has to be done here because we lose permissions
+ 			// to raise the limits once we enter a user-namespace
+ 			if err := setupRlimits(p.config.Rlimits, p.pid()); err != nil {
+@@ -296,6 +293,11 @@ func (p *initProcess) start() error {
+ 			}
+ 			// call prestart hooks
+ 			if !p.config.Config.Namespaces.Contains(configs.NEWNS) {
++				// Setup cgroup before prestart hook, so that the prestart hook could apply cgroup permissions.
++				if err := p.manager.Set(p.config.Config); err != nil {
++					return newSystemErrorWithCause(err, "setting cgroup config for ready process")
++				}
++
+ 				if p.config.Config.Hooks != nil {
+ 					s := configs.HookState{
+ 						SpecState: configs.SpecState{
+@@ -321,6 +323,10 @@ func (p *initProcess) start() error {
+ 			}
+ 			sentRun = true
+ 		case procHooks:
++			// Setup cgroup before prestart hook, so that the prestart hook could apply cgroup permissions.
++			if err := p.manager.Set(p.config.Config); err != nil {
++				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
++			}
+ 			if p.config.Config.Hooks != nil {
+ 				s := configs.HookState{
+ 					SpecState: configs.SpecState{
+-- 
+2.7.4.3
+

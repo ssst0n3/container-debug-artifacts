@@ -1,0 +1,272 @@
+From 511eb03806523b4f51cbde7daedd563a3b5810e4 Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Tue, 17 Jan 2017 12:25:21 +1100
+Subject: [PATCH 04/94] *: handle unprivileged operations and
+ !dumpable
+
+Effectively, !dumpable makes implementing rootless containers quite
+hard, due to a bunch of different operations on /proc/self no longer
+being possible without reordering everything.
+
+!dumpable only really makes sense when you are switching between
+different security contexts, which is only the case when we are joining
+namespaces. Unfortunately this means that !dumpable will still have
+issues in this instance, and it should only be necessary to set
+!dumpable if we are not joining USER namespaces (new kernels have
+protections that make !dumpable no longer necessary). But that's a topic
+for another time.
+
+This also includes code to unset and then re-set dumpable when doing the
+USER namespace mappings. This should also be safe because in principle
+processes in a container can't see us until after we fork into the PID
+namespace (which happens after the user mapping).
+
+In rootless containers, it is not possible to set a non-dumpable
+process's /proc/self/oom_score_adj (it's owned by root and thus not
+writeable). Thus, it needs to be set inside nsexec before we set
+ourselves as non-dumpable.
+
+Change-Id: Iab9e2d9bf3997284253b4b33a504e8581fd787ae
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ libcontainer/container_linux.go |  6 ++++
+ libcontainer/init_linux.go      |  8 ------
+ libcontainer/message_linux.go   | 14 +++++----
+ libcontainer/nsenter/nsexec.c   | 64 ++++++++++++++++++++++++++++++++++-------
+ libcontainer/process_linux.go   |  8 ------
+ 5 files changed, 68 insertions(+), 32 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index cd9235d..d2e0e2b 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1460,5 +1460,11 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
+ 		}
+ 	}
+ 
++	// write oom_score_adj
++	r.AddData(&Bytemsg{
++		Type:  OomScoreAdjAttr,
++		Value: []byte(fmt.Sprintf("%d", c.config.OomScoreAdj)),
++	})
++
+ 	return bytes.NewReader(r.Serialize()), nil
+ }
+diff --git a/libcontainer/init_linux.go b/libcontainer/init_linux.go
+index 39b83a4..0f5d412 100644
+--- a/libcontainer/init_linux.go
++++ b/libcontainer/init_linux.go
+@@ -6,10 +6,8 @@ import (
+ 	"encoding/json"
+ 	"fmt"
+ 	"io"
+-	"io/ioutil"
+ 	"net"
+ 	"os"
+-	"strconv"
+ 	"strings"
+ 	"syscall"
+ 	"unsafe"
+@@ -369,12 +367,6 @@ func setupRlimits(limits []configs.Rlimit, pid int) error {
+ 	return nil
+ }
+ 
+-func setOomScoreAdj(oomScoreAdj int, pid int) error {
+-	path := fmt.Sprintf("/proc/%d/oom_score_adj", pid)
+-
+-	return ioutil.WriteFile(path, []byte(strconv.Itoa(oomScoreAdj)), 0600)
+-}
+-
+ const _P_PID = 1
+ 
+ type siginfo struct {
+diff --git a/libcontainer/message_linux.go b/libcontainer/message_linux.go
+index a189c72..321d664 100644
+--- a/libcontainer/message_linux.go
++++ b/libcontainer/message_linux.go
+@@ -11,12 +11,14 @@ import (
+ // list of known message types we want to send to bootstrap program
+ // The number is randomly chosen to not conflict with known netlink types
+ const (
+-	InitMsg        uint16 = 62000
+-	CloneFlagsAttr uint16 = 27281
+-	NsPathsAttr    uint16 = 27282
+-	UidmapAttr     uint16 = 27283
+-	GidmapAttr     uint16 = 27284
+-	SetgroupAttr   uint16 = 27285
++	InitMsg         uint16 = 62000
++	CloneFlagsAttr  uint16 = 27281
++	NsPathsAttr     uint16 = 27282
++	UidmapAttr      uint16 = 27283
++	GidmapAttr      uint16 = 27284
++	SetgroupAttr    uint16 = 27285
++	OomScoreAdjAttr uint16 = 27286
++
+ 	// When syscall.NLA_HDRLEN is in gccgo, take this out.
+ 	syscall_NLA_HDRLEN = (syscall.SizeofNlAttr + syscall.NLA_ALIGNTO - 1) & ^(syscall.NLA_ALIGNTO - 1)
+ )
+diff --git a/libcontainer/nsenter/nsexec.c b/libcontainer/nsenter/nsexec.c
+index 51bd1e3..9630206 100644
+--- a/libcontainer/nsenter/nsexec.c
++++ b/libcontainer/nsenter/nsexec.c
+@@ -72,18 +72,21 @@ struct nlconfig_t {
+ 	char *namespaces;
+ 	size_t namespaces_len;
+ 	uint8_t is_setgroup;
++	char *oom_score_adj;
++	size_t oom_score_adj_len;
+ };
+ 
+ /*
+  * List of netlink message types sent to us as part of bootstrapping the init.
+  * These constants are defined in libcontainer/message_linux.go.
+  */
+-#define INIT_MSG		62000
++#define INIT_MSG			62000
+ #define CLONE_FLAGS_ATTR	27281
+ #define NS_PATHS_ATTR		27282
+-#define UIDMAP_ATTR		27283
+-#define GIDMAP_ATTR		27284
++#define UIDMAP_ATTR			27283
++#define GIDMAP_ATTR			27284
+ #define SETGROUP_ATTR		27285
++#define OOM_SCORE_ADJ_ATTR	27286
+ 
+ /*
+  * Use the raw syscall for versions of glibc which don't include a function for
+@@ -186,7 +189,7 @@ static void update_setgroups(int pid, enum policy_t setgroup)
+ 	}
+ }
+ 
+-static void update_uidmap(int pid, char *map, int map_len)
++static void update_uidmap(int pid, char *map, size_t map_len)
+ {
+ 	if (map == NULL || map_len <= 0)
+ 		return;
+@@ -195,7 +198,7 @@ static void update_uidmap(int pid, char *map, int map_len)
+ 		bail("failed to update /proc/%d/uid_map", pid);
+ }
+ 
+-static void update_gidmap(int pid, char *map, int map_len)
++static void update_gidmap(int pid, char *map, size_t map_len)
+ {
+ 	if (map == NULL || map_len <= 0)
+ 		return;
+@@ -204,6 +207,15 @@ static void update_gidmap(int pid, char *map, int map_len)
+ 		bail("failed to update /proc/%d/gid_map", pid);
+ }
+ 
++static void update_oom_score_adj(char *data, size_t len)
++{
++	if (data == NULL || len <= 0)
++		return;
++
++	if (write_file(data, len, "/proc/self/oom_score_adj") < 0)
++		bail("failed to update /proc/self/oom_score_adj");
++}
++
+ /* A dummy function that just jumps to the given jumpval. */
+ static int child_func(void *arg) __attribute__ ((noinline));
+ static int child_func(void *arg)
+@@ -317,6 +329,10 @@ static void nl_parse(int fd, struct nlconfig_t *config)
+ 		case CLONE_FLAGS_ATTR:
+ 			config->cloneflags = readint32(current);
+ 			break;
++		case OOM_SCORE_ADJ_ATTR:
++			config->oom_score_adj = current;
++			config->oom_score_adj_len = payload_len;
++			break;
+ 		case NS_PATHS_ATTR:
+ 			config->namespaces = current;
+ 			config->namespaces_len = payload_len;
+@@ -425,14 +441,32 @@ void nsexec(void)
+ 	if (pipenum == -1)
+ 		return;
+ 
+-	/* make the process non-dumpable */
+-	if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) {
+-		bail("failed to set process as non-dumpable");
+-	}
+-
+ 	/* Parse all of the netlink configuration. */
+ 	nl_parse(pipenum, &config);
+ 
++	/* Set oom_score_adj. This has to be done before !dumpable because
++	 * /proc/self/oom_score_adj is not writeable unless you're an privileged
++	 * user (if !dumpable is set). All children inherit their parent's
++	 * oom_score_adj value on fork(2) so this will always be propagated
++	 * properly.
++	 */
++	update_oom_score_adj(config.oom_score_adj, config.oom_score_adj_len);
++
++	/*
++	 * Make the process non-dumpable, to avoid various race conditions that
++	 * could cause processes in namespaces we're joining to access host
++	 * resources (or potentially execute code).
++	 *
++	 * However, if the number of namespaces we are joining is 0, we are not
++	 * going to be switching to a different security context. Thus setting
++	 * ourselves to be non-dumpable only breaks things (like rootless
++	 * containers), which is the recommendation from the kernel folks.
++	 */
++	if (config.namespaces) {
++		if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) < 0)
++			bail("failed to set process as non-dumpable");
++	}
++
+ 	/* Pipe so we can tell the child when we've finished setting up. */
+ 	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, sync_child_pipe) < 0)
+ 		bail("failed to setup sync pipe between parent and child");
+@@ -681,6 +715,11 @@ void nsexec(void)
+ 				 * clone_parent rant). So signal our parent to hook us up.
+ 				 */
+ 
++				/* Switching is only necessary if we joined namespaces. */
++				if (config.namespaces) {
++					if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0)
++						bail("failed to set process as dumpable");
++				}
+ 				s = SYNC_USERMAP_PLS;
+ 				if (write(syncfd, &s, sizeof(s)) != sizeof(s))
+ 					bail("failed to sync with parent: write(SYNC_USERMAP_PLS)");
+@@ -691,6 +730,11 @@ void nsexec(void)
+ 					bail("failed to sync with parent: read(SYNC_USERMAP_ACK)");
+ 				if (s != SYNC_USERMAP_ACK)
+ 					bail("failed to sync with parent: SYNC_USERMAP_ACK: got %u", s);
++				/* Switching is only necessary if we joined namespaces. */
++				if (config.namespaces) {
++					if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) < 0)
++						bail("failed to set process as dumpable");
++				}
+ 			}
+ 
+ 			/*
+diff --git a/libcontainer/process_linux.go b/libcontainer/process_linux.go
+index 0f79a38..c60f473 100644
+--- a/libcontainer/process_linux.go
++++ b/libcontainer/process_linux.go
+@@ -85,10 +85,6 @@ func (p *setnsProcess) start() (err error) {
+ 			return newSystemErrorWithCausef(err, "adding pid %d to cgroups", p.pid())
+ 		}
+ 	}
+-	// set oom_score_adj
+-	if err := setOomScoreAdj(p.config.Config.OomScoreAdj, p.pid()); err != nil {
+-		return newSystemErrorWithCause(err, "setting oom score")
+-	}
+ 	// set rlimits, this has to be done here because we lose permissions
+ 	// to raise the limits once we enter a user-namespace
+ 	if err := setupRlimits(p.config.Rlimits, p.pid()); err != nil {
+@@ -285,10 +281,6 @@ func (p *initProcess) start() error {
+ 			if err := p.manager.Set(p.config.Config); err != nil {
+ 				return newSystemErrorWithCause(err, "setting cgroup config for ready process")
+ 			}
+-			// set oom_score_adj
+-			if err := setOomScoreAdj(p.config.Config.OomScoreAdj, p.pid()); err != nil {
+-				return newSystemErrorWithCause(err, "setting oom score for ready process")
+-			}
+ 			// set rlimits, this has to be done here because we lose permissions
+ 			// to raise the limits once we enter a user-namespace
+ 			if err := setupRlimits(p.config.Rlimits, p.pid()); err != nil {
+-- 
+2.7.4.3
+

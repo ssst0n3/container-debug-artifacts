@@ -1,0 +1,329 @@
+From 360973d5fc25923681b911027ee711dfa77525cf Mon Sep 17 00:00:00 2001
+From: Vanient <xiadanni1@huawei.com>
+Date: Mon, 9 May 2022 20:32:24 +0800
+Subject: [PATCH] [Huawei]runc:add DT for cpuset.preferred_cpus setting
+
+Signed-off-by: Vanient <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/fs/cpuset.go      |   8 +-
+ libcontainer/cgroups/fs/cpuset_test.go | 217 +++++++++++++++++++++++++
+ tests/test_docker_cpuset_preferred.sh  |  41 +++++
+ 3 files changed, 265 insertions(+), 1 deletion(-)
+ create mode 100755 tests/test_docker_cpuset_preferred.sh
+
+diff --git a/libcontainer/cgroups/fs/cpuset.go b/libcontainer/cgroups/fs/cpuset.go
+index 28ffbdb6..ebf75ec3 100644
+--- a/libcontainer/cgroups/fs/cpuset.go
++++ b/libcontainer/cgroups/fs/cpuset.go
+@@ -35,12 +35,15 @@ func (s *CpusetGroup) Apply(d *cgroupData) error {
+ func parseCpus(cpus string) (map[int]bool, error) {
+ 	persedCpus := make(map[int]bool)
+ 	for _, cpu := range strings.Split(cpus, ",") {
++		invalidFormatError := fmt.Errorf("invalid cpuset format: %s", cpu)
+ 		if cpuInt, err := strconv.Atoi(cpu); err == nil {
++			if cpuInt < 0 {
++				return nil, invalidFormatError
++			}
+ 			persedCpus[cpuInt] = true
+ 			continue
+ 		}
+ 
+-		invalidFormatError := fmt.Errorf("invalid cpuset format: %s", cpu)
+ 		ranges := strings.Split(cpu, "-")
+ 		if len(ranges) != 2 {
+ 			return nil, invalidFormatError
+@@ -50,6 +53,9 @@ func parseCpus(cpus string) (map[int]bool, error) {
+ 		if err1 != nil || err2 != nil {
+ 			return nil, invalidFormatError
+ 		}
++		if lower < 0 || upper < 0 {
++			return nil, invalidFormatError
++		}
+ 		if lower > upper {
+ 			return nil, invalidFormatError
+ 		}
+diff --git a/libcontainer/cgroups/fs/cpuset_test.go b/libcontainer/cgroups/fs/cpuset_test.go
+index 0f929151..1fd2141c 100644
+--- a/libcontainer/cgroups/fs/cpuset_test.go
++++ b/libcontainer/cgroups/fs/cpuset_test.go
+@@ -3,6 +3,9 @@
+ package fs
+ 
+ import (
++	"os"
++	"path/filepath"
++	"strings"
+ 	"testing"
+ )
+ 
+@@ -35,6 +38,220 @@ func TestCpusetSetCpus(t *testing.T) {
+ 	}
+ }
+ 
++type cpusetTestCase struct {
++	name       string
++	dir        string
++	cpuset     string
++	wantPrefer string
++	wantCpuset string
++	errorStr   string
++	wantErr    bool
++}
++
++func getCpusetTestcaes() []cpusetTestCase {
++	testDir := "/sys/fs/cgroup/cpuset/runc-test"
++	errStr1 := "failed to set"
++	errStr2 := "invalid cpuset format"
++	errStr3 := "invalid preferred_cpus"
++	return []cpusetTestCase{
++		{
++			name:       "Test1",
++			cpuset:     "0,1,2,+1,2",
++			dir:        testDir,
++			wantPrefer: "1-2",
++			wantCpuset: "0-2",
++			wantErr:    false,
++		},
++		{
++			name:       "Test2",
++			cpuset:     "0-3,+1,2",
++			dir:        testDir,
++			wantPrefer: "1-2",
++			wantCpuset: "0-3",
++			wantErr:    false,
++		},
++		{
++			name:     "Test3",
++			cpuset:   "0,1,2,+1,2",
++			dir:      "/aaa/bbb/invalid",
++			wantErr:  true,
++			errorStr: errStr1,
++		},
++		{
++			name:     "Test4",
++			cpuset:   "0,1,2,+1,2",
++			dir:      "",
++			wantErr:  true,
++			errorStr: errStr1,
++		},
++		{
++			name:     "Test5",
++			cpuset:   "0,1,2,+1,2",
++			dir:      "/" + strings.Repeat("a", 4097),
++			wantErr:  true,
++			errorStr: errStr1,
++		},
++		{
++			name:     "Test6",
++			cpuset:   "0,1,2,a,+1",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test7",
++			cpuset:   "0,1,2,+1,+2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test8",
++			cpuset:   "0,1,1.2,+1,2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test9",
++			cpuset:   "0,-1,2,+1,2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test10",
++			cpuset:   "012+1,2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test11",
++			cpuset:   "0,1,2,+3-1",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test12",
++			cpuset:   "0,1,2,+4",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr3,
++		},
++		{
++			name:     "Test13",
++			cpuset:   "1-3+1-2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:       "Test14",
++			cpuset:     "1-3,+1,2",
++			dir:        testDir,
++			wantPrefer: "1-2",
++			wantCpuset: "1-3",
++			wantErr:    false,
++		},
++		{
++			name:       "Test15",
++			cpuset:     "1-3,+1-2",
++			dir:        testDir,
++			wantPrefer: "1-2",
++			wantCpuset: "1-3",
++			wantErr:    false,
++		},
++		{
++			name:     "Test16",
++			cpuset:   "1-3,+1,4",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr3,
++		},
++		{
++			name:     "Test17",
++			cpuset:   "1-3,+1-2-3",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test18",
++			cpuset:   "1-3,+a-2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test19",
++			cpuset:   "1-3,+3-2",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: errStr2,
++		},
++		{
++			name:     "Test20",
++			cpuset:   "1-3,+2-10000",
++			dir:      testDir,
++			wantErr:  true,
++			errorStr: "value of out range",
++		},
++	}
++}
++
++func TestCpusetSetCpusetCpus(t *testing.T) {
++	cgroupRoot := "/sys/fs/cgroup"
++	testDir := filepath.Join(cgroupRoot, "cpuset", "runc-test")
++	err := os.MkdirAll(testDir, 0600)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		err := os.RemoveAll(testDir)
++		if err != nil {
++			t.Fatal(err)
++		}
++	}()
++
++	cpuset := &CpusetGroup{}
++	tests := getCpusetTestcaes()
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			err := cpuset.setCpuset(tt.dir, tt.cpuset)
++			if (err != nil) != tt.wantErr {
++				t.Fatal(err)
++			}
++
++			if err != nil {
++				if !strings.Contains(err.Error(), tt.errorStr) {
++					t.Fatalf("Get the wrong error, want %v, get %v", tt.errorStr, err.Error())
++				}
++				return
++			}
++
++			value, err := getCgroupParamString(tt.dir, "cpuset.cpus")
++			if err != nil {
++				t.Fatalf("Failed to parse cpuset.cpus - %s", err)
++			}
++
++			if value != tt.wantCpuset {
++				t.Fatal("Got the wrong value, set cpuset.cpus failed.")
++			}
++
++			value, err = getCgroupParamString(tt.dir, "cpuset.preferred_cpus")
++			if err != nil {
++				t.Fatalf("Failed to parse cpuset.cpus - %s", err)
++			}
++
++			if value != tt.wantPrefer {
++				t.Fatal("Got the wrong value, set cpuset.cpus failed.")
++			}
++		})
++	}
++}
++
+ func TestCpusetSetMems(t *testing.T) {
+ 	helper := NewCgroupTestUtil("cpuset", t)
+ 	defer helper.cleanup()
+diff --git a/tests/test_docker_cpuset_preferred.sh b/tests/test_docker_cpuset_preferred.sh
+new file mode 100755
+index 00000000..c80db24e
+--- /dev/null
++++ b/tests/test_docker_cpuset_preferred.sh
+@@ -0,0 +1,41 @@
++#!/bin/bash
++
++# Copyright (c) Huawei Technologies Co., Ltd. 2022. All rights reserved.
++# rubik licensed under the Mulan PSL v2.
++# You can use this software according to the terms and conditions of the Mulan PSL v2.
++# You may obtain a copy of Mulan PSL v2 at:
++#     http://license.coscl.org.cn/MulanPSL2
++# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
++# IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
++# PURPOSE.
++# See the Mulan PSL v2 for more details.
++# Create: 2022-05-09
++# Description:set preferred cpuset
++
++which docker > /dev/null
++if [ $? -ne 0 ]; then
++    echo "environment not supported, skip test"
++    exit 0
++fi
++
++image="rnd-dockerhub.huawei.com/official/euleros:latest"
++containerID=$(docker run -itd --cpuset-cpus 0,1,+1 $image sh)
++if [ $? -ne 0 ]; then
++    echo "FAILED: start container failed"
++    exit 1
++fi
++
++cpuset=$(cat /sys/fs/cgroup/cpuset/docker/"$containerID"/cpuset.cpus)
++preferred_cpuset=$(cat /sys/fs/cgroup/cpuset/docker/"$containerID"/cpuset.preferred_cpus)
++if [ "$cpuset" != "0-1" ]; then
++    echo "FAILED: get wrong cpuset value"
++    exit 1
++fi
++if [ "$preferred_cpuset" != "1" ]; then
++    echo "FAILED: get wrong preferred_cpuset value"
++    exit 1
++fi
++
++docker rm -f "$containerID" > /dev/null
++echo "PASS"
++exit 0
+-- 
+2.27.0
+

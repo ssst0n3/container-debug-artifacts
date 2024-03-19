@@ -1,0 +1,27 @@
+From 70ec40e866f056f071e3df73e8f82608c9c1b741 Mon Sep 17 00:00:00 2001
+From: zhongjiawei <zhongjiawei1@huawei.com>
+Date: Thu, 22 Sep 2022 09:31:43 +0800
+Subject: [PATCH] runc: add CGO sercuity build options
+
+---
+ Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 94cf3f8..2f6bb17 100644
+--- a/Makefile
++++ b/Makefile
+@@ -45,8 +45,8 @@ LD_FLAGS='-w -buildid=none -tmpdir=/tmp/bep-runc -linkmode=external -extldflags=
+ static: $(SOURCES)
+ 	rm -rf /tmp/bep-runc && mkdir /tmp/bep-runc
+ 	CGO_ENABLED=1 \
+-	CGO_CFLAGS="-fstack-protector-strong -fPIE" \
+-	CGO_CPPFLAGS="-fstack-protector-strong -fPIE" \
++	CGO_CFLAGS="-fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 -O2" \
++	CGO_CPPFLAGS="-fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 -O2" \
+ 	CGO_LDFLAGS_ALLOW='-Wl,-z,relro,-z,now' \
+ 	CGO_LDFLAGS="-Wl,-z,relro,-z,now -Wl,-z,noexecstack" \
+ 	go build -buildmode=pie -tags "$(BUILDTAGS) cgo static_build" -ldflags '-extldflags=-static' -ldflags $(LD_FLAGS) -o runc .
+-- 
+2.30.0
+

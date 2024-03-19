@@ -1,0 +1,48 @@
+From e0f78c86d05f7af62aef49c8c495f417d1bf7beb Mon Sep 17 00:00:00 2001
+From: lujingxiao <lujingxiao@huawei.com>
+Date: Fri, 9 Nov 2018 15:01:27 +0800
+Subject: [PATCH 70/94] runc: not print "no such file" when cli err
+
+reason: when container does not exists, runc will cannot find
+state.json, so "state.json: no such file or directory" is expected.
+but user may call runc command anytime, so we should not print such
+log to syslog. Just return it with stderr is ok.
+
+Change-Id: Ia26824d0339f69d8db3ef86c0f8344f60963a177
+Signed-off-by: lujingxiao <lujingxiao@huawei.com>
+---
+ main.go                  | 5 ++++-
+ script/runc-euleros.spec | 2 +-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/main.go b/main.go
+index e55ff82..be3fba6 100644
+--- a/main.go
++++ b/main.go
+@@ -163,6 +163,9 @@ type FatalWriter struct {
+ }
+ 
+ func (f *FatalWriter) Write(p []byte) (n int, err error) {
+-	logrus.Error(string(p))
++	errStr := string(p)
++	if !strings.Contains(errStr, "state.json: no such file or directory") {
++		logrus.Error(errStr)
++	}
+ 	return f.cliErrWriter.Write(p)
+ }
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index 19cdc42..acadd9e 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 9%{?dist}
++Release: 10%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+-- 
+2.7.4.3
+

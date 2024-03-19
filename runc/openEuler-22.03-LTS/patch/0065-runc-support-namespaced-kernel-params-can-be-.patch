@@ -1,0 +1,94 @@
+From c5f152a9dc851e0297f63a73c3e59890da135352 Mon Sep 17 00:00:00 2001
+From: zhangsong34 <zhangsong34@huawei.com>
+Date: Fri, 19 Oct 2018 10:53:33 +0800
+Subject: [PATCH 65/94] runc: support namespaced kernel params can be
+ changed in system container
+
+reason:support namespaced kernel files can be written in container,
+when docker run a system container specify '--ns-change-opt' param,
+net or ipc namespaced kernel params can be changed in this container.
+
+Conflicts:
+	libcontainer/rootfs_linux.go
+	script/runc-euleros.spec
+
+Change-Id: I051b274117abd9745a27577e14a23c906ff7cca3
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ libcontainer/rootfs_linux.go        | 26 ++++++++++++++++++++++++++
+ libcontainer/standard_init_linux.go |  8 ++++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 7cf5edd..38bdd1b 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -160,6 +160,9 @@ func mountToRootfs(m *configs.Mount, rootfs, mountLabel string) error {
+ 
+ 	switch m.Device {
+ 	case "proc", "sysfs":
++		if strings.HasPrefix(m.Destination, "/proc/sys/") {
++			return nil
++		}
+ 		if err := os.MkdirAll(dest, 0755); err != nil {
+ 			return err
+ 		}
+@@ -729,6 +732,29 @@ func readonlyPath(path string) error {
+ 	return syscall.Mount(path, path, "", syscall.MS_BIND|syscall.MS_REMOUNT|syscall.MS_RDONLY|syscall.MS_REC, "")
+ }
+ 
++// remountReadWrite will bind over the top of an existing path and ensure that it is read-write.
++func remountReadWrite(path string) error {
++	for i := 0; i < 5; i++ {
++		if err := syscall.Mount("", path, "", syscall.MS_REMOUNT, ""); err != nil && !os.IsNotExist(err) {
++			switch err {
++			case syscall.EINVAL:
++				// Probably not a mountpoint, use bind-mount
++				if err := syscall.Mount(path, path, "", syscall.MS_BIND, ""); err != nil {
++					return err
++				}
++				return syscall.Mount(path, path, "", syscall.MS_BIND|syscall.MS_REMOUNT|syscall.MS_REC|defaultMountFlags, "")
++			case syscall.EBUSY:
++				time.Sleep(100 * time.Millisecond)
++				continue
++			default:
++				return err
++			}
++		}
++		return nil
++	}
++	return fmt.Errorf("unable to mount %s as readwrite max retries reached", path)
++}
++
+ // remountReadonly will remount an existing mount point and ensure that it is read-only.
+ func remountReadonly(m *configs.Mount) error {
+ 	var (
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index 484ba42..18506af 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -6,6 +6,7 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"os/exec"
++	"strings"
+ 	"syscall"
+ 	"time"
+ 
+@@ -117,6 +118,13 @@ func (l *linuxStandardInit) Init() error {
+ 			return err
+ 		}
+ 	}
++	for _, m := range l.config.Config.Mounts {
++		if m.Flags&syscall.MS_RDONLY == 0 && m.Device == "proc" && strings.HasPrefix(m.Destination, "/proc/sys/") {
++			if err := remountReadWrite(m.Destination); err != nil {
++				return err
++			}
++		}
++	}
+ 	for _, path := range l.config.Config.MaskPaths {
+ 		if err := maskPath(path); err != nil {
+ 			return err
+-- 
+2.7.4.3
+

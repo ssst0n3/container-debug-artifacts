@@ -1,0 +1,59 @@
+From c9d66ffed85529579f4247581d0d387fc21d92fa Mon Sep 17 00:00:00 2001
+From: Tibor Vass <tibor@docker.com>
+Date: Thu, 6 Jul 2017 10:28:14 -0700
+Subject: [PATCH 29/94] vendor runtime-spec fork
+ docker/runtime-spec@a45ba0989fc26c695fe166a49c45bb8b7618ab36
+
+This vendoring brings in the change from uint64 to int64 in the Memory
+structs.
+
+Change-Id: Ic928ff9cde8055a24ad039ccff64b8ceff917142
+Signed-off-by: Tibor Vass <tibor@docker.com>
+---
+ vendor.conf                                                  |  2 +-
+ .../opencontainers/runtime-spec/specs-go/config.go           | 12 ++++++------
+ 2 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/vendor.conf b/vendor.conf
+index 6ab9bf8..b961707 100644
+--- a/vendor.conf
++++ b/vendor.conf
+@@ -1,7 +1,7 @@
+ # OCI runtime-spec. When updating this, make sure you use a version tag rather
+ # than a commit ID so it's much more obvious what version of the spec we are
+ # using.
+-github.com/opencontainers/runtime-spec v1.0.0-rc5
++github.com/opencontainers/runtime-spec a45ba0989fc26c695fe166a49c45bb8b7618ab36 https://github.com/docker/runtime-spec
+ # Core libcontainer functionality.
+ github.com/mrunalp/fileutils ed869b029674c0e9ce4c0dfa781405c2d9946d08
+ github.com/opencontainers/selinux v1.0.0-rc1
+diff --git a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+index bd8e96a..6d2a026 100644
+--- a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
++++ b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+@@ -281,16 +281,16 @@ type LinuxBlockIO struct {
+ // LinuxMemory for Linux cgroup 'memory' resource management
+ type LinuxMemory struct {
+ 	// Memory limit (in bytes).
+-	Limit *uint64 `json:"limit,omitempty"`
++	Limit *int64 `json:"limit,omitempty"`
+ 	// Memory reservation or soft_limit (in bytes).
+-	Reservation *uint64 `json:"reservation,omitempty"`
++	Reservation *int64 `json:"reservation,omitempty"`
+ 	// Total memory limit (memory + swap).
+-	Swap *uint64 `json:"swap,omitempty"`
++	Swap *int64 `json:"swap,omitempty"`
+ 	// Kernel memory limit (in bytes).
+-	Kernel *uint64 `json:"kernel,omitempty"`
++	Kernel *int64 `json:"kernel,omitempty"`
+ 	// Kernel memory limit for tcp (in bytes)
+-	KernelTCP *uint64 `json:"kernelTCP,omitempty"`
+-	// How aggressive the kernel will swap memory pages. Range from 0 to 100.
++	KernelTCP *int64 `json:"kernelTCP,omitempty"`
++	// How aggressive the kernel will swap memory pages.
+ 	Swappiness *uint64 `json:"swappiness,omitempty"`
+ }
+ 
+-- 
+2.7.4.3
+

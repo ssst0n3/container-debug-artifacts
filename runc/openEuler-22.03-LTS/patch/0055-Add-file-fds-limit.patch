@@ -1,0 +1,246 @@
+From fdf82f9b9bac43cac5672226750c826e742559ce Mon Sep 17 00:00:00 2001
+From: yangshukui <yangshukui@huawei.com>
+Date: Mon, 18 Sep 2017 17:25:30 +0800
+Subject: [PATCH 55/94] Add file fds limit
+
+With the patch(https://lwn.net/Articles/604129/),we can limit the
+num of open files in container.
+Conflicts:
+	events.go
+	vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+
+Change-Id: I8264c0dd398227ebbd95b7dd9dae4688d76dee9b
+Signed-off-by: yangshukui <yangshukui@huawei.com>
+---
+ events.go                                          |  9 +++
+ libcontainer/cgroups/fs/apply_raw.go               |  1 +
+ libcontainer/cgroups/fs/files.go                   | 74 ++++++++++++++++++++++
+ libcontainer/cgroups/stats.go                      |  8 +++
+ libcontainer/cgroups/systemd/apply_systemd.go      |  1 +
+ libcontainer/configs/cgroup_unix.go                |  3 +
+ libcontainer/specconv/spec_linux.go                |  3 +
+ .../opencontainers/runtime-spec/specs-go/config.go |  8 +++
+ 8 files changed, 107 insertions(+)
+ create mode 100644 libcontainer/cgroups/fs/files.go
+
+diff --git a/events.go b/events.go
+index 6c21e52..79a72bf 100644
+--- a/events.go
++++ b/events.go
+@@ -27,6 +27,7 @@ type stats struct {
+ 	CPU     cpu                `json:"cpu"`
+ 	Memory  memory             `json:"memory"`
+ 	Pids    pids               `json:"pids"`
++	Files   files              `json:"files"`
+ 	Blkio   blkio              `json:"blkio"`
+ 	Hugetlb map[string]hugetlb `json:"hugetlb"`
+ }
+@@ -60,6 +61,11 @@ type pids struct {
+ 	Limit   uint64 `json:"limit,omitempty"`
+ }
+ 
++type files struct {
++	Usage uint64 `json:"usage,omitempty"`
++	Limit uint64 `json:"limit,omitempty"`
++}
++
+ type throttling struct {
+ 	Periods          uint64 `json:"periods,omitempty"`
+ 	ThrottledPeriods uint64 `json:"throttledPeriods,omitempty"`
+@@ -198,6 +204,9 @@ func convertLibcontainerStats(ls *libcontainer.Stats) *stats {
+ 	s.Pids.Current = cg.PidsStats.Current
+ 	s.Pids.Limit = cg.PidsStats.Limit
+ 
++	s.Files.Usage = cg.FilesStats.Usage
++	s.Files.Limit = cg.FilesStats.Limit
++
+ 	s.CPU.Usage.Kernel = cg.CpuStats.CpuUsage.UsageInKernelmode
+ 	s.CPU.Usage.User = cg.CpuStats.CpuUsage.UsageInUsermode
+ 	s.CPU.Usage.Total = cg.CpuStats.CpuUsage.TotalUsage
+diff --git a/libcontainer/cgroups/fs/apply_raw.go b/libcontainer/cgroups/fs/apply_raw.go
+index 66debae..1bf59a4 100644
+--- a/libcontainer/cgroups/fs/apply_raw.go
++++ b/libcontainer/cgroups/fs/apply_raw.go
+@@ -24,6 +24,7 @@ var (
+ 		&CpuGroup{},
+ 		&CpuacctGroup{},
+ 		&PidsGroup{},
++		&FilesGroup{},
+ 		&BlkioGroup{},
+ 		&HugetlbGroup{},
+ 		&NetClsGroup{},
+diff --git a/libcontainer/cgroups/fs/files.go b/libcontainer/cgroups/fs/files.go
+new file mode 100644
+index 0000000..f2e253a
+--- /dev/null
++++ b/libcontainer/cgroups/fs/files.go
+@@ -0,0 +1,74 @@
++// +build linux
++
++package fs
++
++import (
++	"fmt"
++	"io/ioutil"
++	"strconv"
++
++	"github.com/opencontainers/runc/libcontainer/cgroups"
++	"github.com/opencontainers/runc/libcontainer/configs"
++)
++
++var (
++	defaultFilesMax = "8192"
++)
++
++type FilesGroup struct {
++}
++
++func init() {
++	contents, err := ioutil.ReadFile("/proc/sys/fs/file-max")
++	if err != nil {
++		return
++	}
++	defaultFilesMax = string(contents)
++}
++
++func (s *FilesGroup) Name() string {
++	return "files"
++}
++
++func (s *FilesGroup) Apply(d *cgroupData) error {
++	_, err := d.join("files")
++	if err != nil && !cgroups.IsNotFound(err) {
++		return err
++	}
++	return nil
++}
++
++func (s *FilesGroup) Set(path string, cgroup *configs.Cgroup) error {
++	if cgroup.Resources.FilesLimit != 0 {
++		limit := defaultFilesMax
++		if cgroup.Resources.FilesLimit > 0 {
++			limit = strconv.FormatInt(cgroup.Resources.FilesLimit, 10)
++		}
++
++		if err := writeFile(path, "files.limit", limit); err != nil {
++			return err
++		}
++	}
++
++	return nil
++}
++
++func (s *FilesGroup) Remove(d *cgroupData) error {
++	return removePath(d.path("files"))
++}
++
++func (s *FilesGroup) GetStats(path string, stats *cgroups.Stats) error {
++	usage, err := getCgroupParamUint(path, "files.usage")
++	if err != nil {
++		return fmt.Errorf("failed to parse files.usage - %s", err)
++	}
++
++	limit, err := getCgroupParamUint(path, "files.limit")
++	if err != nil {
++		return fmt.Errorf("failed to parse files.limit - %s", err)
++	}
++
++	stats.FilesStats.Usage = usage
++	stats.FilesStats.Limit = limit
++	return nil
++}
+diff --git a/libcontainer/cgroups/stats.go b/libcontainer/cgroups/stats.go
+index b483f1b..5079410 100644
+--- a/libcontainer/cgroups/stats.go
++++ b/libcontainer/cgroups/stats.go
+@@ -62,6 +62,13 @@ type PidsStats struct {
+ 	Limit uint64 `json:"limit,omitempty"`
+ }
+ 
++type FilesStats struct {
++	// number of pids in the cgroup
++	Usage uint64 `json:"usage,omitempty"`
++	// active pids hard limit
++	Limit uint64 `json:"limit,omitempty"`
++}
++
+ type BlkioStatEntry struct {
+ 	Major uint64 `json:"major,omitempty"`
+ 	Minor uint64 `json:"minor,omitempty"`
+@@ -94,6 +101,7 @@ type Stats struct {
+ 	CpuStats    CpuStats    `json:"cpu_stats,omitempty"`
+ 	MemoryStats MemoryStats `json:"memory_stats,omitempty"`
+ 	PidsStats   PidsStats   `json:"pids_stats,omitempty"`
++	FilesStats  FilesStats  `json:"files_stats,omitempty"`
+ 	BlkioStats  BlkioStats  `json:"blkio_stats,omitempty"`
+ 	// the map is in the format "size of hugepage: stats of the hugepage"
+ 	HugetlbStats map[string]HugetlbStats `json:"hugetlb_stats,omitempty"`
+diff --git a/libcontainer/cgroups/systemd/apply_systemd.go b/libcontainer/cgroups/systemd/apply_systemd.go
+index 456c57d..0411b72 100644
+--- a/libcontainer/cgroups/systemd/apply_systemd.go
++++ b/libcontainer/cgroups/systemd/apply_systemd.go
+@@ -54,6 +54,7 @@ var subsystems = subsystemSet{
+ 	&fs.CpuGroup{},
+ 	&fs.CpuacctGroup{},
+ 	&fs.PidsGroup{},
++	&fs.FilesGroup{},
+ 	&fs.BlkioGroup{},
+ 	&fs.HugetlbGroup{},
+ 	&fs.PerfEventGroup{},
+diff --git a/libcontainer/configs/cgroup_unix.go b/libcontainer/configs/cgroup_unix.go
+index 75a3db0..acf0562 100644
+--- a/libcontainer/configs/cgroup_unix.go
++++ b/libcontainer/configs/cgroup_unix.go
+@@ -89,6 +89,9 @@ type Resources struct {
+ 	// Process limit; set <= `0' to disable limit.
+ 	PidsLimit int64 `json:"pids_limit"`
+ 
++	// Process open files limit.
++	FilesLimit int64 `json:"files_limit"`
++
+ 	// Specifies per cgroup weight, range is from 10 to 1000.
+ 	BlkioWeight uint16 `json:"blkio_weight"`
+ 
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index a968313..b82082e 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -403,6 +403,9 @@ func createCgroupConfig(opts *CreateOpts) (*configs.Cgroup, error) {
+ 	if r.Pids != nil {
+ 		c.Resources.PidsLimit = r.Pids.Limit
+ 	}
++	if r.Files != nil && r.Files.Limit != nil {
++		c.Resources.FilesLimit = *r.Files.Limit
++	}
+ 	if r.BlockIO != nil {
+ 		if r.BlockIO.Weight != nil {
+ 			c.Resources.BlkioWeight = *r.BlockIO.Weight
+diff --git a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+index 6d2a026..603ecf4 100644
+--- a/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
++++ b/vendor/github.com/opencontainers/runtime-spec/specs-go/config.go
+@@ -318,6 +318,12 @@ type LinuxPids struct {
+ 	Limit int64 `json:"limit"`
+ }
+ 
++// Files for Linux cgroup 'files' resource management (https://lwn.net/Articles/604129/)
++type Files struct {
++	// Maximum number of open files".
++	Limit *int64 `json:"limit,omitempty"`
++}
++
+ // LinuxNetwork identification and priority configuration
+ type LinuxNetwork struct {
+ 	// Set class identifier for container's network packets
+@@ -340,6 +346,8 @@ type LinuxResources struct {
+ 	CPU *LinuxCPU `json:"cpu,omitempty"`
+ 	// Task resource restriction configuration.
+ 	Pids *LinuxPids `json:"pids,omitempty"`
++	// Files resource restriction configuration.
++	Files *Files `json:"files,omitempty"`
+ 	// BlockIO restriction configuration
+ 	BlockIO *LinuxBlockIO `json:"blockIO,omitempty"`
+ 	// Hugetlb limit (in bytes)
+-- 
+2.7.4.3
+

@@ -1,0 +1,43 @@
+From 06109d15b267af73d523817e6dcf501fa071a815 Mon Sep 17 00:00:00 2001
+From: caihaomin <caihaomin@huawei.com>
+Date: Fri, 15 Dec 2017 17:42:03 +0800
+Subject: [PATCH 44/94] runc: default mount propagation correctly
+
+[Changelog]:The code in prepareRoot
+attempts to default the rootfs mount to `rslave`. However, since the spec
+conversion has already defaulted it to `rprivate`, that code doesn't
+actually ever do anything.
+
+This changes the spec conversion code to accept "" and treat it as 0.
+
+Implicitly, this makes rootfs propagation default to `rslave`, which is
+a part of fixing the moby bug moby/moby#34672
+
+Alternate implementatoins include changing this defaulting to be
+`rslave` and removing the defaulting code in prepareRoot, or skipping
+the mapping entirely for "", but I think this change is the cleanest of
+those options.
+[Author]git
+
+Change-Id: I35954e2c8a71c1d3713753669044b5bf9d6c57fa
+Signed-off-by: caihaomin <caihaomin@huawei.com>
+---
+ libcontainer/specconv/spec_linux.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcontainer/specconv/spec_linux.go b/libcontainer/specconv/spec_linux.go
+index 1575ae0..8a2947f 100644
+--- a/libcontainer/specconv/spec_linux.go
++++ b/libcontainer/specconv/spec_linux.go
+@@ -36,7 +36,7 @@ var mountPropagationMapping = map[string]int{
+ 	"slave":    syscall.MS_SLAVE,
+ 	"rshared":  syscall.MS_SHARED | syscall.MS_REC,
+ 	"shared":   syscall.MS_SHARED,
+-	"":         syscall.MS_PRIVATE | syscall.MS_REC,
++	"":         0,
+ }
+ 
+ var allowedDevices = []*configs.Device{
+-- 
+2.7.4.3
+

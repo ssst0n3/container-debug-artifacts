@@ -1,0 +1,70 @@
+From 0fe280f25568a5700f9ac388b1434b344e1d1fab Mon Sep 17 00:00:00 2001
+From: xiadanni <xiadanni1@huawei.com>
+Date: Mon, 4 Jan 2021 20:00:26 +0800
+Subject: [PATCH] runc: add cpu and memory info when print cgroup info
+
+Signed-off-by: xiadanni <xiadanni1@huawei.com>
+---
+ libcontainer/container_linux.go     |  4 ++--
+ libcontainer/standard_init_linux.go | 23 +++++++++++++----------
+ 2 files changed, 15 insertions(+), 12 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index 9b25183..7319286 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -310,10 +310,10 @@ func (c *linuxContainer) start(process *Process) error {
+ 		return newSystemErrorWithCause(err, "creating new parent process")
+ 	}
+ 	if err := parent.start(); err != nil {
+-		printFilesInfo(c.config.Cgroups.Path)
++		printCgroupInfo(c.config.Cgroups.Path)
+ 		// terminate the process to ensure that it properly is reaped.
+ 		if err := parent.terminate(); err != nil {
+-			logrus.Warn(err)
++			logrus.Warnf("parent process terminate error: %v", err)
+ 		}
+ 		return newSystemErrorWithCause(err, "starting container process")
+ 	}
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index 96901ef..b985180 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -215,21 +215,24 @@ func (l *linuxStandardInit) Init() error {
+ 	// https://github.com/torvalds/linux/blob/v4.9/fs/exec.c#L1290-L1318
+ 	syscall.Close(l.stateDirFD)
+ 	if err := syscall.Exec(name, l.config.Args[0:], os.Environ()); err != nil {
+-		printMemoryInfo()
+-		printFilesInfo("")
++		printCgroupInfo("")
+ 		return newSystemErrorWithCause(err, "exec user process")
+ 	}
+ 	return nil
+ }
+ 
+-func printMemoryInfo() {
+-	printFileContent("/proc/meminfo")
+-	printFileContent("/sys/fs/cgroup/memory/memory.stat")
+-}
+-
+-func printFilesInfo(path string) {
+-	printFileContent(filepath.Join("/sys/fs/cgroup/files", path, "/files.limit"))
+-	printFileContent(filepath.Join("/sys/fs/cgroup/files", path, "/files.usage"))
++func printCgroupInfo(path string) {
++	infoFileList := []string{
++		"/proc/meminfo",
++		"/sys/fs/cgroup/memory/memory.stat",
++		filepath.Join("/sys/fs/cgroup/files", path, "/files.limit"),
++		filepath.Join("/sys/fs/cgroup/files", path, "/files.usage"),
++		filepath.Join("/sys/fs/cgroup/memory", path, "/memory.stat"),
++		filepath.Join("/sys/fs/cgroup/cpu", path, "/cpu.stat"),
++	}
++	for _, file := range infoFileList {
++		printFileContent(file)
++	}
+ }
+ 
+ func printFileContent(path string) {
+-- 
+1.8.3.1
+

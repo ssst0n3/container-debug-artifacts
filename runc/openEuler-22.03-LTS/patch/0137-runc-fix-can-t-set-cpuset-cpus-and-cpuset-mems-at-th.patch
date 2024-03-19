@@ -1,0 +1,28 @@
+From b4840e2463cea04325ad978359e496949eb9f7ca Mon Sep 17 00:00:00 2001
+From: chenjiankun <chenjiankun1@huawei.com>
+Date: Wed, 23 Nov 2022 10:20:04 +0800
+Subject: [PATCH] runc: fix can't set cpuset-cpus and cpuset-mems at the same
+ time
+
+---
+ libcontainer/cgroups/fs/cpuset.go | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/fs/cpuset.go b/libcontainer/cgroups/fs/cpuset.go
+index ebf75ec3..ce1389d8 100644
+--- a/libcontainer/cgroups/fs/cpuset.go
++++ b/libcontainer/cgroups/fs/cpuset.go
+@@ -152,7 +152,9 @@ func (s *CpusetGroup) setCpuset(path, cpuset string) error {
+ func (s *CpusetGroup) Set(path string, cgroup *configs.Cgroup) error {
+ 	var ret error
+ 	if cgroup.Resources.CpusetCpus != "" {
+-		return s.setCpuset(path, cgroup.Resources.CpusetCpus)
++		if err := s.setCpuset(path, cgroup.Resources.CpusetCpus); err != nil {
++			return err
++		}
+ 	}
+ 
+ 	if cgroup.Resources.CpusetMems != "" {
+-- 
+2.23.0
+

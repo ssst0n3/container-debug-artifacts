@@ -1,0 +1,49 @@
+From e2d3a9925386b07e15db79ceee1e5430eed13c26 Mon Sep 17 00:00:00 2001
+From: jingrui <jingrui@huawei.com>
+Date: Thu, 11 Apr 2019 23:32:01 +0800
+Subject: [PATCH] runc:  enable bep ldflags
+
+Change-Id: I9221cb54e470b6c511f7962294bf405de00549c7
+Signed-off-by: jingrui <jingrui@huawei.com>
+---
+ Makefile | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index f043d0bc..76423d83 100644
+--- a/Makefile
++++ b/Makefile
+@@ -24,21 +24,26 @@ VERSION := ${shell cat ./VERSION}
+ 
+ SHELL := $(shell command -v bash 2>/dev/null)
+ 
++BEP_DIR := "/tmp/runc-build-bep"
++BEP_FLAG := "-tmpdir=${BEP_DIR}"
++
+ .DEFAULT: runc
+ 
+ runc: $(SOURCES)
+-	go build -i -ldflags "-X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o runc .
++	mkdir -p ${BEP_DIR}
++	go build -i -ldflags " ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o runc .
+ 
+ all: runc recvtty
+ 
+ recvtty: contrib/cmd/recvtty/recvtty
+ 
+ contrib/cmd/recvtty/recvtty: $(SOURCES)
+-	go build -i -ldflags "-X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
++	go build -i -ldflags " ${BEP_FLAG} -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -tags "$(BUILDTAGS)" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
+ static: $(SOURCES)
+-	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
+-	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
++	mkdir -p ${BEP_DIR}
++	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o runc .
++	CGO_ENABLED=1 go build -i -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static  ${BEP_FLAG}  -X main.gitCommit=${COMMIT} -X main.version=${VERSION}" -o contrib/cmd/recvtty/recvtty ./contrib/cmd/recvtty
+ 
+ release:
+ 	@flag_list=(seccomp selinux apparmor static); \
+-- 
+2.17.1
+

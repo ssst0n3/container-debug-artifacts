@@ -1,0 +1,35 @@
+From d8ea288801363d61c46a5eecfe7e1a9001767bc7 Mon Sep 17 00:00:00 2001
+From: CuiHaozhi <cuihz@wise2c.com>
+Date: Fri, 7 Apr 2017 07:39:41 -0400
+Subject: [PATCH 18/94] could load a stopped container.
+
+Change-Id: Ieabdef66ad7e9488a44b718093acf23f8aa947c4
+Signed-off-by: CuiHaozhi <cuihz@wise2c.com>
+---
+ libcontainer/factory.go | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/libcontainer/factory.go b/libcontainer/factory.go
+index f0ccb52..0986cd7 100644
+--- a/libcontainer/factory.go
++++ b/libcontainer/factory.go
+@@ -10,7 +10,7 @@ type Factory interface {
+ 	// between 1 and 1024 characters, inclusive.
+ 	//
+ 	// The id must not already be in use by an existing container. Containers created using
+-	// a factory with the same path (and file system) must have distinct ids.
++	// a factory with the same path (and filesystem) must have distinct ids.
+ 	//
+ 	// Returns the new container with a running process.
+ 	//
+@@ -28,7 +28,6 @@ type Factory interface {
+ 	//
+ 	// errors:
+ 	// Path does not exist
+-	// Container is stopped
+ 	// System error
+ 	Load(id string) (Container, error)
+ 
+-- 
+2.7.4.3
+

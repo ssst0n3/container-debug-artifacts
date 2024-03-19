@@ -1,0 +1,61 @@
+From 093594c58411b6a25844650b40463449e1af11ce Mon Sep 17 00:00:00 2001
+From: lujingxiao <lujingxiao@huawei.com>
+Date: Thu, 23 Aug 2018 15:03:50 +0800
+Subject: [PATCH 37/94] docker: Don't enalbe kmem accounting by
+ default
+
+reason:In kernel 3.10, kmem cgroup is unstable,
+we should not enable kmem accounting by default.
+Revert part of
+https://github.com/hqhq/runc/commit/fe898e7862f945fa3632580139602c627dcb9be0
+
+Change-Id: I546d1da875b1df7d525fd5c96a89c439ed6642f2
+Signed-off-by: lujingxiao <lujingxiao@huawei.com>
+---
+ libcontainer/cgroups/fs/memory.go | 6 ++----
+ script/runc-euleros.spec          | 8 ++++++--
+ 2 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/libcontainer/cgroups/fs/memory.go b/libcontainer/cgroups/fs/memory.go
+index c993839..118cce8 100644
+--- a/libcontainer/cgroups/fs/memory.go
++++ b/libcontainer/cgroups/fs/memory.go
+@@ -41,10 +41,8 @@ func (s *MemoryGroup) Apply(d *cgroupData) (err error) {
+ 			if err := os.MkdirAll(path, 0755); err != nil {
+ 				return err
+ 			}
+-			// Only enable kernel memory accouting when this cgroup
+-			// is created by libcontainer, otherwise we might get
+-			// error when people use `cgroupsPath` to join an existed
+-			// cgroup whose kernel memory is not initialized.
++		}
++		if d.config.KernelMemory != 0 {
+ 			if err := EnableKernelMemoryAccounting(path); err != nil {
+ 				return err
+ 			}
+diff --git a/script/runc-euleros.spec b/script/runc-euleros.spec
+index a925e02..c3db7c9 100644
+--- a/script/runc-euleros.spec
++++ b/script/runc-euleros.spec
+@@ -2,7 +2,7 @@
+ 
+ Name: docker-runc
+ Version: 1.0.0.rc3
+-Release: 1%{?dist}
++Release: 2%{?dist}
+ Summary: runc is a CLI tool for spawning and running containers according to the OCF specification
+ 
+ License: ASL 2.0
+@@ -46,4 +46,8 @@ install -p -m 755 runc $RPM_BUILD_ROOT/%{_bindir}/runc
+ %{_bindir}/runc
+ 
+ %changelog
+-
++* Thu Aug 23 2018 lujingxiao<lujingxiao@huawei.com> - 1.0.0.rc3-2
++- Type:bugfix
++- ID:NA 
++- SUG:NA
++- DESC:Don't enalbe kmem accounting by default
+-- 
+2.7.4.3
+

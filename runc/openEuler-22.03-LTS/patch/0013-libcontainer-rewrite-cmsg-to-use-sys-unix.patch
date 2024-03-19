@@ -1,0 +1,327 @@
+From c13a4de91dc2a3db4b9085015dbce2f8e050d7ca Mon Sep 17 00:00:00 2001
+From: Aleksa Sarai <asarai@suse.de>
+Date: Wed, 29 Mar 2017 22:39:05 +1100
+Subject: [PATCH 13/94] libcontainer: rewrite cmsg to use sys/unix
+
+The original implementation is in C, which increases cognitive load and
+possibly might cause us problems in the future. Since sys/unix is better
+maintained than the syscall standard library switching makes more sense.
+
+Change-Id: I8d91c2d7b28116d3d9be49e328f9383b9b7052d7
+Signed-off-by: Aleksa Sarai <asarai@suse.de>
+---
+ libcontainer/utils/cmsg.c  | 148 ---------------------------------------------
+ libcontainer/utils/cmsg.go |  74 +++++++++++++++++------
+ libcontainer/utils/cmsg.h  |  36 -----------
+ 3 files changed, 56 insertions(+), 202 deletions(-)
+ delete mode 100644 libcontainer/utils/cmsg.c
+ delete mode 100644 libcontainer/utils/cmsg.h
+
+diff --git a/libcontainer/utils/cmsg.c b/libcontainer/utils/cmsg.c
+deleted file mode 100644
+index 0ded494..0000000
+--- a/libcontainer/utils/cmsg.c
++++ /dev/null
+@@ -1,148 +0,0 @@
+-/*
+- * Copyright 2016 SUSE LLC
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-#include <errno.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <sys/socket.h>
+-#include <sys/types.h>
+-#include <unistd.h>
+-
+-#include "cmsg.h"
+-
+-#define error(fmt, ...)							\
+-	({								\
+-		fprintf(stderr, "nsenter: " fmt ": %m\n", ##__VA_ARGS__); \
+-		errno = ECOMM;						\
+-		goto err; /* return value */				\
+-	})
+-
+-/*
+- * Sends a file descriptor along the sockfd provided. Returns the return
+- * value of sendmsg(2). Any synchronisation and preparation of state
+- * should be done external to this (we expect the other side to be in
+- * recvfd() in the code).
+- */
+-ssize_t sendfd(int sockfd, struct file_t file)
+-{
+-	struct msghdr msg = {0};
+-	struct iovec iov[1] = {0};
+-	struct cmsghdr *cmsg;
+-	int *fdptr;
+-	int ret;
+-
+-	union {
+-		char buf[CMSG_SPACE(sizeof(file.fd))];
+-		struct cmsghdr align;
+-	} u;
+-
+-	/*
+-	 * We need to send some other data along with the ancillary data,
+-	 * otherwise the other side won't recieve any data. This is very
+-	 * well-hidden in the documentation (and only applies to
+-	 * SOCK_STREAM). See the bottom part of unix(7).
+-	 */
+-	iov[0].iov_base = file.name;
+-	iov[0].iov_len = strlen(file.name) + 1;
+-
+-	msg.msg_name = NULL;
+-	msg.msg_namelen = 0;
+-	msg.msg_iov = iov;
+-	msg.msg_iovlen = 1;
+-	msg.msg_control = u.buf;
+-	msg.msg_controllen = sizeof(u.buf);
+-
+-	cmsg = CMSG_FIRSTHDR(&msg);
+-	cmsg->cmsg_level = SOL_SOCKET;
+-	cmsg->cmsg_type = SCM_RIGHTS;
+-	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+-
+-	fdptr = (int *) CMSG_DATA(cmsg);
+-	memcpy(fdptr, &file.fd, sizeof(int));
+-
+-	return sendmsg(sockfd, &msg, 0);
+-}
+-
+-/*
+- * Receives a file descriptor from the sockfd provided. Returns the file
+- * descriptor as sent from sendfd(). It will return the file descriptor
+- * or die (literally) trying. Any synchronisation and preparation of
+- * state should be done external to this (we expect the other side to be
+- * in sendfd() in the code).
+- */
+-struct file_t recvfd(int sockfd)
+-{
+-	struct msghdr msg = {0};
+-	struct iovec iov[1] = {0};
+-	struct cmsghdr *cmsg;
+-	struct file_t file = {0};
+-	int *fdptr;
+-	int olderrno;
+-
+-	union {
+-		char buf[CMSG_SPACE(sizeof(file.fd))];
+-		struct cmsghdr align;
+-	} u;
+-
+-	/* Allocate a buffer. */
+-	/* TODO: Make this dynamic with MSG_PEEK. */
+-	file.name = malloc(TAG_BUFFER);
+-	if (!file.name)
+-		error("recvfd: failed to allocate file.tag buffer\n");
+-
+-	/*
+-	 * We need to "recieve" the non-ancillary data even though we don't
+-	 * plan to use it at all. Otherwise, things won't work as expected.
+-	 * See unix(7) and other well-hidden documentation.
+-	 */
+-	iov[0].iov_base = file.name;
+-	iov[0].iov_len = TAG_BUFFER;
+-
+-	msg.msg_name = NULL;
+-	msg.msg_namelen = 0;
+-	msg.msg_iov = iov;
+-	msg.msg_iovlen = 1;
+-	msg.msg_control = u.buf;
+-	msg.msg_controllen = sizeof(u.buf);
+-
+-	ssize_t ret = recvmsg(sockfd, &msg, 0);
+-	if (ret < 0)
+-		goto err;
+-
+-	cmsg = CMSG_FIRSTHDR(&msg);
+-	if (!cmsg)
+-		error("recvfd: got NULL from CMSG_FIRSTHDR");
+-	if (cmsg->cmsg_level != SOL_SOCKET)
+-		error("recvfd: expected SOL_SOCKET in cmsg: %d", cmsg->cmsg_level);
+-	if (cmsg->cmsg_type != SCM_RIGHTS)
+-		error("recvfd: expected SCM_RIGHTS in cmsg: %d", cmsg->cmsg_type);
+-	if (cmsg->cmsg_len != CMSG_LEN(sizeof(int)))
+-		error("recvfd: expected correct CMSG_LEN in cmsg: %lu", (unsigned long)cmsg->cmsg_len);
+-
+-	fdptr = (int *) CMSG_DATA(cmsg);
+-	if (!fdptr || *fdptr < 0)
+-		error("recvfd: recieved invalid pointer");
+-
+-	file.fd = *fdptr;
+-	return file;
+-
+-err:
+-	olderrno = errno;
+-	free(file.name);
+-	errno = olderrno;
+-	return (struct file_t){0};
+-}
+diff --git a/libcontainer/utils/cmsg.go b/libcontainer/utils/cmsg.go
+index ee89374..2cbb649 100644
+--- a/libcontainer/utils/cmsg.go
++++ b/libcontainer/utils/cmsg.go
+@@ -3,7 +3,7 @@
+ package utils
+ 
+ /*
+- * Copyright 2016 SUSE LLC
++ * Copyright 2016, 2017 SUSE LLC
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+@@ -18,28 +18,66 @@ package utils
+  * limitations under the License.
+  */
+ 
+-/*
+-#include <errno.h>
+-#include <stdlib.h>
+-#include "cmsg.h"
+-*/
+-import "C"
+-
+ import (
++	"fmt"
+ 	"os"
+-	"unsafe"
++
++	"golang.org/x/sys/unix"
+ )
+ 
++// MaxSendfdLen is the maximum length of the name of a file descriptor being
++// sent using SendFd. The name of the file handle returned by RecvFd will never
++// be larger than this value.
++const MaxNameLen = 4096
++
++// oobSpace is the size of the oob slice required to store a single FD. Note
++// that unix.UnixRights appears to make the assumption that fd is always int32,
++// so sizeof(fd) = 4.
++var oobSpace = unix.CmsgSpace(4)
++
+ // RecvFd waits for a file descriptor to be sent over the given AF_UNIX
+ // socket. The file name of the remote file descriptor will be recreated
+ // locally (it is sent as non-auxiliary data in the same payload).
+ func RecvFd(socket *os.File) (*os.File, error) {
+-	file, err := C.recvfd(C.int(socket.Fd()))
++	// For some reason, unix.Recvmsg uses the length rather than the capacity
++	// when passing the msg_controllen and other attributes to recvmsg.  So we
++	// have to actually set the length.
++	name := make([]byte, MaxNameLen)
++	oob := make([]byte, oobSpace)
++
++	sockfd := socket.Fd()
++	n, oobn, _, _, err := unix.Recvmsg(int(sockfd), name, oob, 0)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	defer C.free(unsafe.Pointer(file.name))
+-	return os.NewFile(uintptr(file.fd), C.GoString(file.name)), nil
++
++	if n >= MaxNameLen || oobn != oobSpace {
++		return nil, fmt.Errorf("recvfd: incorrect number of bytes read (n=%d oobn=%d)", n, oobn)
++	}
++
++	// Truncate.
++	name = name[:n]
++	oob = oob[:oobn]
++
++	scms, err := unix.ParseSocketControlMessage(oob)
++	if err != nil {
++		return nil, err
++	}
++	if len(scms) != 1 {
++		return nil, fmt.Errorf("recvfd: number of SCMs is not 1: %d", len(scms))
++	}
++	scm := scms[0]
++
++	fds, err := unix.ParseUnixRights(&scm)
++	if err != nil {
++		return nil, err
++	}
++	if len(fds) != 1 {
++		return nil, fmt.Errorf("recvfd: number of fds is not 1: %d", len(fds))
++	}
++	fd := uintptr(fds[0])
++
++	return os.NewFile(fd, string(name)), nil
+ }
+ 
+ // SendFd sends a file descriptor over the given AF_UNIX socket. In
+@@ -47,11 +85,11 @@ func RecvFd(socket *os.File) (*os.File, error) {
+ // non-auxiliary data in the same payload (allowing to send contextual
+ // information for a file descriptor).
+ func SendFd(socket, file *os.File) error {
+-	var cfile C.struct_file_t
+-	cfile.fd = C.int(file.Fd())
+-	cfile.name = C.CString(file.Name())
+-	defer C.free(unsafe.Pointer(cfile.name))
++	name := []byte(file.Name())
++	if len(name) >= MaxNameLen {
++		return fmt.Errorf("sendfd: filename too long: %s", file.Name())
++	}
++	oob := unix.UnixRights(int(file.Fd()))
+ 
+-	_, err := C.sendfd(C.int(socket.Fd()), cfile)
+-	return err
++	return unix.Sendmsg(int(socket.Fd()), name, oob, nil, 0)
+ }
+diff --git a/libcontainer/utils/cmsg.h b/libcontainer/utils/cmsg.h
+deleted file mode 100644
+index 3fe7642..0000000
+--- a/libcontainer/utils/cmsg.h
++++ /dev/null
+@@ -1,36 +0,0 @@
+-/*
+- * Copyright 2016 SUSE LLC
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-#pragma once
+-
+-#if !defined(CMSG_H)
+-#define CMSG_H
+-
+-#include <sys/types.h>
+-
+-/* TODO: Implement this properly with MSG_PEEK. */
+-#define TAG_BUFFER 4096
+-
+-/* This mirrors Go's (*os.File). */
+-struct file_t {
+-	char *name;
+-	int fd;
+-};
+-
+-struct file_t recvfd(int sockfd);
+-ssize_t sendfd(int sockfd, struct file_t file);
+-
+-#endif /* !defined(CMSG_H) */
+-- 
+2.7.4.3
+

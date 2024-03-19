@@ -1,0 +1,57 @@
+From a410e6a2f9adeb46813a5016812ad334c6560b2d Mon Sep 17 00:00:00 2001
+From: dengguangxing <dengguangxing@huawei.com>
+Date: Thu, 18 Jan 2018 11:47:04 +0800
+Subject: [PATCH 46/94] runc: print cgroup info if cpuset missing
+ occurs
+
+[Changelog]: print cgroup info if cpuset missing occurs
+[Author]:Shukui Yang
+
+Change-Id: I3f8af2b57b441f5f2b4d38cb89d6826a7f24e24b
+Signed-off-by: dengguangxing <dengguangxing@huawei.com>
+---
+ libcontainer/cgroups/fs/cpuset.go | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/libcontainer/cgroups/fs/cpuset.go b/libcontainer/cgroups/fs/cpuset.go
+index 918b9a3..069c491 100644
+--- a/libcontainer/cgroups/fs/cpuset.go
++++ b/libcontainer/cgroups/fs/cpuset.go
+@@ -9,6 +9,7 @@ import (
+ 	"os"
+ 	"path/filepath"
+ 
++	"github.com/Sirupsen/logrus"
+ 	"github.com/opencontainers/runc/libcontainer/cgroups"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	libcontainerUtils "github.com/opencontainers/runc/libcontainer/utils"
+@@ -91,6 +92,26 @@ func (s *CpusetGroup) ApplyDir(dir string, cgroup *configs.Cgroup, pid int) erro
+ }
+ 
+ func (s *CpusetGroup) getSubsystemSettings(parent string) (cpus []byte, mems []byte, err error) {
++	defer func() {
++		if err != nil {
++			minfo, err1 := ioutil.ReadFile("/proc/self/mountinfo")
++			if err1 != nil {
++				logrus.Errorf("Failed to read mountinfo when getSubsystemSettings get an error")
++			}
++
++			dirInfo := ""
++			fs, err2 := ioutil.ReadDir(parent)
++			if err2 != nil {
++				logrus.Errorf("Failed to read mountinfo when getSubsystemSettings get an error")
++			}
++			for _, f := range fs {
++				dirInfo = dirInfo + " " + f.Name()
++			}
++
++			logrus.Errorf("Read cpuset cgroup failed, print mountinfo and cgroup info here"+
++				"path: %s, mountinfo: [%s], dirinfo: [%s]", parent, string(minfo), dirInfo)
++		}
++	}()
+ 	if cpus, err = ioutil.ReadFile(filepath.Join(parent, "cpuset.cpus")); err != nil {
+ 		return
+ 	}
+-- 
+2.7.4.3
+

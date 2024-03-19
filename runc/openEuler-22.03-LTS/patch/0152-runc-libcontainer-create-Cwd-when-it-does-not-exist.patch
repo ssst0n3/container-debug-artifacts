@@ -1,0 +1,73 @@
+From 85840292ccceb506c988034a8ce951fcf459d34c Mon Sep 17 00:00:00 2001
+From: Akihiro Suda <suda.akihiro@lab.ntt.co.jp>
+Date: Wed, 4 Oct 2017 08:07:58 +0000
+Subject: [PATCH] libcontainer: create Cwd when it does not exist
+
+The benefit for doing this within runc is that it works well with
+userns.
+Actually, runc already does the same thing for mount points.
+
+Signed-off-by: Akihiro Suda <suda.akihiro@lab.ntt.co.jp>
+---
+ libcontainer/rootfs_linux.go        | 17 +++++++++++++----
+ libcontainer/standard_init_linux.go |  2 +-
+ 2 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/libcontainer/rootfs_linux.go b/libcontainer/rootfs_linux.go
+index 855bcdb0..f5d9214a 100644
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -41,10 +41,10 @@ func needsSetupDev(config *configs.Config) bool {
+ }
+ 
+ // prepareRootfs sets up the devices, mount points, and filesystems for use
+-// inside a new mount namespace. It doesn't set anything as ro or pivot_root,
+-// because console setup happens inside the caller. You must call
+-// finalizeRootfs in order to finish the rootfs setup.
+-func prepareRootfs(pipe io.ReadWriter, config *configs.Config) (err error) {
++// inside a new mount namespace. It doesn't set anything as ro. You must call
++// finalizeRootfs after this function to finish setting up the rootfs.
++func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig) (err error) {
++	config := iConfig.Config
+ 	if err := prepareRoot(config); err != nil {
+ 		return newSystemErrorWithCause(err, "preparing rootfs")
+ 	}
+@@ -84,6 +84,7 @@ func prepareRootfs(pipe io.ReadWriter, config *configs.Config) (err error) {
+ 	// The hooks are run after the mounts are setup, but before we switch to the new
+ 	// root, so that the old root is still available in the hooks for any mount
+ 	// manipulations.
++	// Note that iConfig.Cwd is not guaranteed to exist here.
+ 	if err := syncParentHooks(pipe); err != nil {
+ 		return err
+ 	}
+@@ -115,6 +116,14 @@ func prepareRootfs(pipe io.ReadWriter, config *configs.Config) (err error) {
+ 		}
+ 	}
+ 
++	if cwd := iConfig.Cwd; cwd != "" {
++		// Note that spec.Process.Cwd can contain unclean value like  "../../../../foo/bar...".
++		// However, we are safe to call MkDirAll directly because we are in the jail here.
++		if err := os.MkdirAll(cwd, 0755); err != nil {
++			return err
++		}
++	}
++
+ 	return nil
+ }
+ 
+diff --git a/libcontainer/standard_init_linux.go b/libcontainer/standard_init_linux.go
+index b4945c3d..69d2dfb5 100644
+--- a/libcontainer/standard_init_linux.go
++++ b/libcontainer/standard_init_linux.go
+@@ -76,7 +76,7 @@ func (l *linuxStandardInit) Init() error {
+ 
+ 	// prepareRootfs() can be executed only for a new mount namespace.
+ 	if l.config.Config.Namespaces.Contains(configs.NEWNS) {
+-		if err := prepareRootfs(l.pipe, l.config.Config); err != nil {
++		if err := prepareRootfs(l.pipe, l.config); err != nil {
+ 			return err
+ 		}
+ 	}
+-- 
+2.33.0
+

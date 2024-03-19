@@ -1,0 +1,31 @@
+From 34dc868ee8515be89835bc98ccbf01f22bd6b1b9 Mon Sep 17 00:00:00 2001
+From: Michael Crosby <crosbymichael@gmail.com>
+Date: Wed, 7 Jun 2017 10:51:42 -0700
+Subject: [PATCH 28/94] Revert saneTerminal
+
+Keep the ONCLR for the terminal created by runc for backwards compat
+support of older clients.
+
+Change-Id: Ibdf33687262f13ef98c882328d55c9c4212ce0b6
+Signed-off-by: Michael Crosby <crosbymichael@gmail.com>
+---
+ libcontainer/console_linux.go | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/libcontainer/console_linux.go b/libcontainer/console_linux.go
+index 5e364a8..5927bdc 100644
+--- a/libcontainer/console_linux.go
++++ b/libcontainer/console_linux.go
+@@ -21,9 +21,6 @@ func newConsole() (Console, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if err := saneTerminal(master); err != nil {
+-		return nil, err
+-	}
+ 	console, err := ptsname(master)
+ 	if err != nil {
+ 		return nil, err
+-- 
+2.7.4.3
+

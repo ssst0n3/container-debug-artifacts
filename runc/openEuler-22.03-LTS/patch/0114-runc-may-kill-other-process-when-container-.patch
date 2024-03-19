@@ -1,0 +1,43 @@
+From b39f29f48456ae7e9b85ff7584adeb7e68fda460 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Thu, 19 Dec 2019 02:35:01 +0800
+Subject: [PATCH 3/5] runc: may kill other process when container
+ has been stopped
+
+reason:may kill other process when container has been stopped
+
+Change-Id: Iaa1af6f44dec5d7eac3518ff1dbdfedc68eb7219
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/container_linux.go | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+index e7c178b..9b25183 100644
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -358,10 +358,18 @@ func (c *linuxContainer) Signal(s os.Signal, all bool) error {
+ 	if all {
+ 		return signalAllProcesses(c.cgroupManager, s)
+ 	}
+-	if err := c.initProcess.signal(s); err != nil {
+-		return newSystemErrorWithCause(err, "signaling init process")
++	status, err := c.currentStatus()
++	if err != nil {
++		return err
+ 	}
+-	return nil
++	// to avoid a PID reuse attack
++	if status == Running || status == Created {
++		if err := c.initProcess.signal(s); err != nil {
++			return newSystemErrorWithCause(err, "signaling init process")
++		}
++		return nil
++	}
++	return newGenericError(fmt.Errorf("container not running"), ContainerNotRunning)
+ }
+ 
+ func (c *linuxContainer) createExecFifo() error {
+-- 
+1.8.3.1
+

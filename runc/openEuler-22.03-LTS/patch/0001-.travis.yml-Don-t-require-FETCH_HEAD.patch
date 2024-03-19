@@ -1,0 +1,40 @@
+From 3eb678a633ddf3be06851a1b8c69a98650e9a367 Mon Sep 17 00:00:00 2001
+From: "W. Trevor King" <wking@tremily.us>
+Date: Tue, 21 Mar 2017 11:48:39 -0700
+Subject: [PATCH 01/94] .travis.yml: Don't require FETCH_HEAD
+
+Master builds only have a 'git clone ...' [1] so FETCH_HEAD isn't
+defined and git-validation crashes [2].  We don't want to be
+hard-coding a range here, and should update git-validation to handle
+these cases automatically.
+
+Also echo TRAVIS_* variables during testing to make debugging
+git-validation easier.
+
+[1]: https://travis-ci.org/opencontainers/runc/jobs/213508696#L243
+[2]: https://travis-ci.org/opencontainers/runc/jobs/213508696#L347
+
+Change-Id: I325ae392323133b123f0ef7577a4464ae10a54cb
+Signed-off-by: W. Trevor King <wking@tremily.us>
+---
+ .travis.yml | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/.travis.yml b/.travis.yml
+index 04f71f5..244c643 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -23,8 +23,9 @@ before_install:
+   - go get -u github.com/golang/lint/golint
+   - go get -u github.com/vbatts/git-validation
+   - go get -u github.com/mvdan/sh/cmd/shfmt
++  - env | grep TRAVIS_
+ 
+ script:
+-  - git-validation -run DCO,short-subject -v -range ${TRAVIS_BRANCH}..FETCH_HEAD
++  - git-validation -run DCO,short-subject -v
+   - make BUILDTAGS="${BUILDTAGS}"
+   - make BUILDTAGS="${BUILDTAGS}" clean validate test
+-- 
+2.7.4.3
+

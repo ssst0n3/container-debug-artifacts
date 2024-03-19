@@ -1,0 +1,46 @@
+From 1b9ff04a3f6e7bc9b8bce087ccacf894c21adc97 Mon Sep 17 00:00:00 2001
+From: xiadanni1 <xiadanni1@huawei.com>
+Date: Thu, 19 Dec 2019 02:41:08 +0800
+Subject: [PATCH 5/5] runc: check nil pointers in cgroup manager
+
+reason:check nil pointers in cgroup manager
+
+Change-Id: I94bda4b4ca4031ee93d54885603e60e64d3683a0
+Signed-off-by: xiadanni1 <xiadanni1@huawei.com>
+---
+ libcontainer/cgroups/fs/apply_raw.go | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/libcontainer/cgroups/fs/apply_raw.go b/libcontainer/cgroups/fs/apply_raw.go
+index 7677f33..73c733a 100644
+--- a/libcontainer/cgroups/fs/apply_raw.go
++++ b/libcontainer/cgroups/fs/apply_raw.go
+@@ -189,9 +189,13 @@ func (m *Manager) GetStats() (*cgroups.Stats, error) {
+ }
+ 
+ func (m *Manager) Set(container *configs.Config) error {
++	if container.Cgroups == nil {
++		return nil
++	}
++
+ 	// If Paths are set, then we are just joining cgroups paths
+ 	// and there is no need to set any values.
+-	if m.Cgroups.Paths != nil {
++	if m.Cgroups != nil && m.Cgroups.Paths != nil {
+ 		return nil
+ 	}
+ 
+@@ -214,6 +218,10 @@ func (m *Manager) Set(container *configs.Config) error {
+ // Freeze toggles the container's freezer cgroup depending on the state
+ // provided
+ func (m *Manager) Freeze(state configs.FreezerState) error {
++	if m.Cgroups == nil {
++		return errors.New("cannot toggle freezer: cgroups not configured for container")
++	}
++
+ 	paths := m.GetPaths()
+ 	dir := paths["freezer"]
+ 	prevState := m.Cgroups.Resources.Freezer
+-- 
+1.8.3.1
+
