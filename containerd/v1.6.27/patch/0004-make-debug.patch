@@ -1,0 +1,50 @@
+diff --git a/Makefile b/Makefile
+index 3f89696..79024ac 100644
+--- a/Makefile
++++ b/Makefile
+@@ -475,5 +475,9 @@ image:
+ shell:
+ 	docker run -ti -v $(shell pwd):/go/src/github.com/containerd/containerd ${CONTAINERD_IMAGE} bash
+ 
++# SHELL = /bin/sh -x
++debug:
++	make GODEBUG=1 GO_BUILD_FLAGS='-gcflags=all="-N -l"'
++
+ help: ## this help
+ 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
+diff --git a/cmd/containerd-shim-runc-v2/debug-flag.go b/cmd/containerd-shim-runc-v2/debug-flag.go
+new file mode 100644
+index 0000000..b3fa432
+--- /dev/null
++++ b/cmd/containerd-shim-runc-v2/debug-flag.go
+@@ -0,0 +1,30 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func hasCmd() bool {
++	for i := 1; i < len(os.Args); i++ {
++		if os.Args[i][0] == '-' {
++			i += 1
++			continue
++		} else {
++			return true
++		}
++	}
++	return false
++}
++
++func init() {
++	if !hasCmd() {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
