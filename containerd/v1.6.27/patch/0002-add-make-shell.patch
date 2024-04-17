@@ -1,10 +1,10 @@
 diff --git a/Makefile b/Makefile
-index aa53b77..2771e9e 100644
+index c8614b3..3f89696 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -472,5 +472,8 @@ CONTAINERD_IMAGE := ssst0n3/containerd_dev:${RELEASE_VER}
  image:
- 	docker buildx build --build-arg RELEASE_VER=${RELEASE_VER} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} --build-arg GO_VERSION=${GO_VERSION} ${BUILD_ARGS} -f .github/workflows/release/Dockerfile --platform=${PLATFORM} --target target -t ${CONTAINERD_IMAGE} . 
+ 	docker buildx build --build-arg RELEASE_VER=${RELEASE_VER} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} --build-arg GO_VERSION=${GO_VERSION} ${BUILD_ARGS} -f .github/workflows/release/Dockerfile --platform=${PLATFORM} --target shell -t ${CONTAINERD_IMAGE} . 
  
 +shell:
 +	docker run -ti -v $(shell pwd):/go/src/github.com/containerd/containerd ${CONTAINERD_IMAGE} bash

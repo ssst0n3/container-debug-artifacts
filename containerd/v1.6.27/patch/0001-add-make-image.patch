@@ -1,5 +1,20 @@
+diff --git a/.github/workflows/release/Dockerfile b/.github/workflows/release/Dockerfile
+index 489087d..3de5295 100644
+--- a/.github/workflows/release/Dockerfile
++++ b/.github/workflows/release/Dockerfile
+@@ -39,6 +39,10 @@ FROM base AS windows
+ ARG GATEWAY
+ ARG PREFIX_LEN
+ 
++FROM ${TARGETOS} AS shell
++WORKDIR /go/src/github.com/containerd/containerd
++COPY --from=go /usr/local/go /usr/local/go
++
+ FROM ${TARGETOS} AS target
+ WORKDIR /go/src/github.com/containerd/containerd
+ COPY . .
 diff --git a/Makefile b/Makefile
-index cff278e..aa53b77 100644
+index cff278e..c8614b3 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -459,6 +459,18 @@ verify-vendor: ## verify if all the go.mod/go.sum files are up-to-date
@@ -17,7 +32,7 @@ index cff278e..aa53b77 100644
 +CONTAINERD_IMAGE := ssst0n3/containerd_dev:${RELEASE_VER}
 +
 +image:
-+	docker buildx build --build-arg RELEASE_VER=${RELEASE_VER} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} --build-arg GO_VERSION=${GO_VERSION} ${BUILD_ARGS} -f .github/workflows/release/Dockerfile --platform=${PLATFORM} --target target -t ${CONTAINERD_IMAGE} . 
++	docker buildx build --build-arg RELEASE_VER=${RELEASE_VER} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} --build-arg GO_VERSION=${GO_VERSION} ${BUILD_ARGS} -f .github/workflows/release/Dockerfile --platform=${PLATFORM} --target shell -t ${CONTAINERD_IMAGE} . 
  
  help: ## this help
  	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
