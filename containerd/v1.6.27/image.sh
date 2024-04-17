@@ -7,5 +7,5 @@ else
 fi
 
 ./apply-patch.sh
-cd runc
+cd containerd
 make image

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cwd=$PWD
-src=$cwd/runc
+src=$cwd/containerd
 
 series=$cwd/series.conf
 while IPF= read -r line
