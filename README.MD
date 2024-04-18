@@ -136,4 +136,4 @@ Next step:
 |         | [containerd-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v1.6.27-debug) | | 
 |         | [containerd-v1.6.27-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v1.6.27-debug-flag) | | 
 |         | [ctr-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug) | | 
-|         | [ctr-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug) | | 
+|         | [ctr-v1.6.27-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug-flag) | | 
