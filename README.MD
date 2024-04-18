@@ -1,10 +1,8 @@
 # Container Debug Artifacts
 
-## What is it?
-
 Maintain some container debug artifacts. 
 
-Just upload manully now.
+<img src="./image/debug.png" width=200>
 
 Next step:
 
