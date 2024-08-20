@@ -1,0 +1,124 @@
+diff --git a/Dockerfile b/Dockerfile
+index cc5a192..2593983 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -23,12 +23,13 @@
+ # the case. Therefore, you don't have to disable it anymore.
+ #
+ 
+-docker-version	0.6.1
++# docker-version	0.6.1
+ FROM	ubuntu:12.04
+ MAINTAINER	Solomon Hykes <solomon@dotcloud.com>
+ 
+ # Build dependencies
+-RUN	echo 'deb http://archive.ubuntu.com/ubuntu precise main universe' > /etc/apt/sources.list
++# RUN	echo 'deb http://archive.ubuntu.com/ubuntu precise main universe' > /etc/apt/sources.list
++RUN	sed -i 's/archive/old-releases/g' /etc/apt/sources.list
+ RUN	apt-get update
+ RUN	apt-get install -y -q curl
+ RUN	apt-get install -y -q git
+@@ -36,20 +37,26 @@ RUN	apt-get install -y -q mercurial
+ RUN	apt-get install -y -q build-essential libsqlite3-dev
+ 
+ # Install Go
+-RUN	curl -s https://go.googlecode.com/files/go1.2.src.tar.gz | tar -v -C /usr/local -xz
++# RUN	curl -s https://go.googlecode.com/files/go1.2.src.tar.gz | tar -v -C /usr/local -xz
++RUN	curl -s https://codeload.github.com/golang/go/tar.gz/refs/tags/go1.2 | tar -v -C /usr/local -xz && mv /usr/local/go-go1.2 /usr/local/go
+ ENV	PATH	/usr/local/go/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+ ENV	GOPATH	/go:/go/src/github.com/dotcloud/docker/vendor
+ RUN	cd /usr/local/go/src && ./make.bash && go install -ldflags '-w -linkmode external -extldflags "-static -Wl,--unresolved-symbols=ignore-in-shared-libs"' -tags netgo -a std
+ 
+ # Ubuntu stuff
+-RUN	apt-get install -y -q ruby1.9.3 rubygems libffi-dev
+-RUN	gem install --no-rdoc --no-ri fpm
+-RUN	apt-get install -y -q reprepro dpkg-sig
++# RUN	apt-get install -y -q ruby1.9.3 rubygems libffi-dev 
++# RUN	apt-get install -y -q ruby1.9.3 libffi-dev
++# ENV	LANG C.UTF-8
++# ENV	LC_ALL C.UTF-8 
++# RUN	curl -s https://rubygems.org/rubygems/rubygems-2.0.0.tgz | tar -v -C /tmp -xz && cd /tmp/rubygems-2.0.0/ && ruby setup.rb
++# RUN	ruby --version
++# RUN	gem install --no-rdoc --no-ri fpm
++# RUN	apt-get install -y -q reprepro dpkg-sig
+ 
+-RUN	apt-get install -y -q python-pip
+-RUN	pip install s3cmd==1.1.0-beta3
+-RUN	pip install python-magic==0.4.6
+-RUN	/bin/echo -e '[default]\naccess_key=$AWS_ACCESS_KEY\nsecret_key=$AWS_SECRET_KEY\n' > /.s3cfg
++# RUN	apt-get install -y -q python-pip
++# RUN	pip install s3cmd==1.1.0-beta3
++# RUN	pip install python-magic==0.4.6
++# RUN	/bin/echo -e '[default]\naccess_key=$AWS_ACCESS_KEY\nsecret_key=$AWS_SECRET_KEY\n' > /.s3cfg
+ 
+ # Runtime dependencies
+ RUN	apt-get install -y -q iptables
+@@ -57,7 +64,8 @@ RUN	apt-get install -y -q lxc
+ RUN	apt-get install -y -q aufs-tools
+ 
+ # Get lvm2 source for compiling statically
+-RUN	git clone https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2 && cd /usr/local/lvm2 && git checkout v2_02_103
++# RUN	git clone https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2 && cd /usr/local/lvm2 && git checkout v2_02_103
++RUN git clone https://gitlab.com/lvmteam/lvm2.git /usr/local/lvm2 && cd /usr/local/lvm2 && git checkout v2_02_103
+ # see https://git.fedorahosted.org/cgit/lvm2.git/refs/tags for release tags
+ # note: we can't use "git clone -b" above because it requires at least git 1.7.10 to be able to use that on a tag instead of a branch and we only have 1.7.9.5
+ 
+@@ -65,11 +73,11 @@ RUN	git clone https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2 && cd /u
+ RUN	cd /usr/local/lvm2 && ./configure --enable-static_link && make device-mapper && make install_device-mapper
+ # see https://git.fedorahosted.org/cgit/lvm2.git/tree/INSTALL
+ 
+-VOLUME	/var/lib/docker
++# VOLUME	/var/lib/docker
+ WORKDIR	/go/src/github.com/dotcloud/docker
+ 
+ # Wrap all commands in the "docker-in-docker" script to allow nested containers
+-ENTRYPOINT	["hack/dind"]
++# ENTRYPOINT	["hack/dind"]
+ 
+ # Upload docker source
+-ADD	.	/go/src/github.com/dotcloud/docker
++# ADD	.	/go/src/github.com/dotcloud/docker
+diff --git a/Makefile b/Makefile
+index 1518fb1..a5ee9da 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,5 +1,7 @@
+ .PHONY: all binary build default doc shell test
+ 
++RELEASE_VER := $(shell git tag)
++DOCKER_IMAGE := ssst0n3/docker_dev:${RELEASE_VER}
+ DOCKER_RUN_DOCKER := docker run -rm -i -t -privileged -e TESTFLAGS -v $(CURDIR)/bundles:/go/src/github.com/dotcloud/docker/bundles docker
+ 
+ default: binary
+@@ -7,7 +9,7 @@ default: binary
+ all: build
+ 	$(DOCKER_RUN_DOCKER) hack/make.sh
+ 
+-binary: build
++binary_: build
+ 	$(DOCKER_RUN_DOCKER) hack/make.sh binary
+ 
+ doc:
+@@ -16,7 +18,7 @@ doc:
+ test: build
+ 	$(DOCKER_RUN_DOCKER) hack/make.sh test
+ 
+-shell: build
++shell_: build
+ 	$(DOCKER_RUN_DOCKER) bash
+ 
+ build: bundles
+@@ -24,3 +26,13 @@ build: bundles
+ 
+ bundles:
+ 	mkdir bundles
++
++image:
++	docker build -t ${DOCKER_IMAGE} .
++
++shell:
++	docker run -ti -v $(shell pwd):/go/src/github.com/dotcloud/docker/ ${DOCKER_IMAGE} bash
++
++binary:
++	hack/make.sh binary
++
