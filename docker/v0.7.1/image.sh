@@ -6,6 +6,6 @@ else
     git clone --depth 1 --branch v0.7.1 https://github.com/moby/moby.git
 fi
 
-# ./apply-patch.sh
-# cd containerd
-# make image
+./apply-patch.sh
+cd moby
+make image
