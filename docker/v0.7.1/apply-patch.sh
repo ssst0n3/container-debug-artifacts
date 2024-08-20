@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cwd=$PWD
-src=$cwd/containerd
+src=$cwd/moby
 
 cd $src
 git config user.email "ssst0n3@gmail.com"
