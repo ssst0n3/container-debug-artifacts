@@ -1,12 +1,11 @@
 diff --git a/Makefile b/Makefile
-index a5ee9da..b1f2aa6 100644
+index a5ee9da..9bdd0bb 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -36,3 +36,7 @@ shell:
+@@ -36,3 +36,6 @@ shell:
  binary:
  	hack/make.sh binary
  
-+debug:
-+	binary
++debug: binary
 +	cp bundles/0.7.1/binary/docker-0.7.1 bundles/0.7.1/binary/docker-v0.7.1-debug
 +	# todo: add debug flag
