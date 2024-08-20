@@ -101,6 +101,13 @@ Next step:
 |         | [ctr-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug) | | 
 |         | [ctr-v1.6.27-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug-flag) | | 
 
+## docker
+
+| version | binary | available dlv | note |
+| --- | --- | --- | --- |
+| [v0.7.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v0.7.1) | [docker-v0.7.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v0.7.1-debug) |  | 
+| TODO |
+
 ## dlv
 
 | version | binary | note |
