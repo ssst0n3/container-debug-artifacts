@@ -1,0 +1,45 @@
+diff --git a/Makefile b/Makefile
+index df935e4..a96f187 100644
+--- a/Makefile
++++ b/Makefile
+@@ -173,6 +173,14 @@ shell: runcimage
+ 		-v $(CURDIR):/go/src/$(PROJECT) \
+ 		$(RUNC_IMAGE) bash
+ 
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.1.0-d3d7f7d-debug
++	mv debug-flag.go.bak debug-flag.go
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.1.0-d3d7f7d-debug-flag
++
+ .PHONY: install
+ install:
+ 	install -D -m0755 runc $(DESTDIR)$(BINDIR)/runc
+ 
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file
