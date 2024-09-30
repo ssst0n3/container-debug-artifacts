@@ -19,6 +19,8 @@ Next step:
 |        | [runc-v1.1.0-a6f4081-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-a6f4081-debug-flag) | |
 | [v1.1.0-ab3cd8d](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.0-ab3cd8d) | [runc-v1.1.0-ab3cd8d-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-ab3cd8d-debug) |  | 2023-11-28 committed |
 |        | [runc-v1.1.0-ab3cd8d-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-ab3cd8d-debug-flag) | |
+| [v1.1.0-7396ca9](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.0-7396ca9) | [runc-v1.1.0-7396ca9-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-7396ca9-debug) |  | 2023-11-28 committed |
+|        | [runc-v1.1.0-7396ca9-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-7396ca9-debug-flag) | |
 | [v1.1.0-d3d7f7d](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.0-d3d7f7d) | [runc-v1.1.0-d3d7f7d-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-d3d7f7d-debug) |  | 2023-11-28 committed |
 |        | [runc-v1.1.0-d3d7f7d-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-d3d7f7d-debug-flag) | |
 | [v1.1.0-7d09ba1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.0-7d09ba1) | [runc-v1.1.0-7d09ba1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-7d09ba1-debug) |  | | 2023-06-09 committed |
