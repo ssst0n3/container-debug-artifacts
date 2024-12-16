@@ -126,7 +126,12 @@ Next step:
 
 | version | binary | available dlv | note |
 | --- | --- | --- | --- |
-| [v1.16.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/nvidia-container-toolkit/v1.16.1) | 
+| [v1.16.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/nvidia-container-toolkit/v1.16.1) | [nvidia-cdi-hook-v1.16.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-cdi-hook-v1.16.1-debug) |
+| | [nvidia-container-runtime-hook-v1.16.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-container-runtime-hook-v1.16.1-debug) |
+| | [nvidia-container-runtime-v1.16.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-container-runtime-v1.16.1-debug) |
+| | [nvidia-container-runtime.cdi-v1.16.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-container-runtime.cdi-v1.16.1-debug) |
+| | [nvidia-container-runtime.legacy-v1.16.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-container-runtime.legacy-v1.16.1-debug) |
+| | [nvidia-ctk-v1.16.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-ctk-v1.16.1-debug) |
 
 ## dlv
 
