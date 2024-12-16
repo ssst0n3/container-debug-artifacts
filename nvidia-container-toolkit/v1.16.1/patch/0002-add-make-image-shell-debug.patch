@@ -7,7 +7,7 @@ index 31a06d6..0381ffb 100644
  binaries: cmds
  ifneq ($(PREFIX),)
 -cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)
-+cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)-v1.16.1
++cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)-debug-v1.16.1
  endif
  cmds: $(CMD_TARGETS)
  
