@@ -122,6 +122,12 @@ Next step:
 | [v0.7.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v0.7.1) | [docker-v0.7.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v0.7.1-debug) |  | 
 | TODO |
 
+## nvidia-container-toolkit
+
+| version | binary | available dlv | note |
+| --- | --- | --- | --- |
+| [v1.16.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/nvidia-container-toolkit/v1.16.1) | 
+
 ## dlv
 
 | version | binary | note |
