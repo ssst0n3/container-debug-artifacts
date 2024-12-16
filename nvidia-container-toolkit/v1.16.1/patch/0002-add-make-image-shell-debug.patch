@@ -1,3 +1,16 @@
+diff --git a/Makefile b/Makefile
+index 31a06d6..0381ffb 100644
+--- a/Makefile
++++ b/Makefile
+@@ -55,7 +55,7 @@ CLI_VERSION_PACKAGE = github.com/NVIDIA/nvidia-container-toolkit/internal/info
+ 
+ binaries: cmds
+ ifneq ($(PREFIX),)
+-cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)
++cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)-v1.16.1
+ endif
+ cmds: $(CMD_TARGETS)
+ 
 diff --git a/docker/Dockerfile.ubuntu.debug b/docker/Dockerfile.ubuntu.debug
 new file mode 100644
 index 0000000..f6105a9
@@ -56,7 +69,7 @@ index 0000000..f6105a9
 +ARG GIT_COMMIT
 +ENV GIT_COMMIT ${GIT_COMMIT}
 diff --git a/docker/docker.mk b/docker/docker.mk
-index c264b64..fb38bb8 100644
+index c264b64..6f076e3 100644
 --- a/docker/docker.mk
 +++ b/docker/docker.mk
 @@ -140,6 +140,34 @@ docker-build-%:
