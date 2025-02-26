@@ -1,0 +1,16 @@
+diff --git a/Dockerfile b/Dockerfile
+index 557ec04..7f48ae9 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,7 +1,9 @@
+ FROM golang:1.5.3
+ 
+-RUN echo "deb http://ftp.us.debian.org/debian testing main contrib" >> /etc/apt/sources.list
+-RUN apt-get update && apt-get install -y \
++RUN echo 'deb http://archive.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
++RUN sed -i s/httpredir.debian.org/archive.debian.org/g /etc/apt/sources.list
++RUN sed -i s/security.debian.org/archive.debian.org/g /etc/apt/sources.list
++RUN apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=true || apt-get install -y --force-yes \
+     build-essential \
+     curl \
+     iptables \
