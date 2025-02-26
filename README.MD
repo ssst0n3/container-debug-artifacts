@@ -103,6 +103,8 @@ Next step:
 |                                                                                                      | [runc-v0.1.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v0.1.1-debug-flag)         | TODO |
 | [v0.1.0](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v0.1.0)         | [runc-v0.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v0.1.0-debug)                   | TODO |
 |                                                                                                      | [runc-v0.1.0-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v0.1.0-debug-flag)         | TODO |
+| [v0.0.9](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v0.0.9)         | [runc-v0.0.9-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v0.0.9-debug)                   | TODO |
+|                                                                                                      | [runc-v0.0.9-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v0.0.9-debug-flag)         | TODO |
 
 ## containerd
 
