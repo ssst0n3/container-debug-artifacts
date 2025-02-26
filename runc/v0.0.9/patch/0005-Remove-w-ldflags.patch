@@ -1,0 +1,13 @@
+diff --git a/Makefile b/Makefile
+index 5de10d0..832f3d5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -18,7 +18,7 @@ endif
+ 	go build -ldflags "-X main.gitCommit=${COMMIT}" -tags "$(BUILDTAGS)" -o runc .
+ 
+ static:
+-	CGO_ENABLED=1 go build -tags "$(BUILDTAGS) cgo static_build" -ldflags "-w -extldflags -static" -o runc .
++	CGO_ENABLED=1 go build $(EXTRA_FLAGS) -tags "$(BUILDTAGS) cgo static_build" -ldflags "-extldflags -static" -o runc .
+ 
+ lint:
+ 	go vet ./...

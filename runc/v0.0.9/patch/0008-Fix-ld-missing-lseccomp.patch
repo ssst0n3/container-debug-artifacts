@@ -1,0 +1,15 @@
+diff --git a/Dockerfile b/Dockerfile
+index cd49d33..591884f 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,8 +12,8 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecure
+     libcap-dev \
+     libprotobuf-dev \
+     libprotobuf-c0-dev \
+-    libseccomp2 \
+-    libseccomp-dev \
++    libseccomp2/jessie-backports \
++    libseccomp-dev/jessie-backports \
+     protobuf-c-compiler \
+     protobuf-compiler \
+     python-minimal \
