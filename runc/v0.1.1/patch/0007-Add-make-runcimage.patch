@@ -1,14 +1,14 @@
 diff --git a/Makefile b/Makefile
-index 0852c71..15342c4 100644
+index 5de10d0..08183bb 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -47,6 +47,9 @@ man:
+@@ -27,6 +27,9 @@ lint:
  runctestimage:
  	docker build -t $(RUNC_TEST_IMAGE) -f $(TEST_DOCKERFILE) .
  
 +runcimage:
 +	docker build -t $(RUNC_IMAGE) .
 +
- test:
- 	make unittest integration
- 
+ test: runctestimage
+ 	docker run -e TESTFLAGS -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_TEST_IMAGE) make localtest
+ 	tests/sniffTest
