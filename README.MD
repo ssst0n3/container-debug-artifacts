@@ -151,6 +151,10 @@ Next step:
 
 | version | binary | note |
 | --- | --- | --- |
+| v1.24.1 | [dlv-v1.24.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.24.1) |
+| v1.24.0 | [dlv-v1.24.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.24.0) |
+| v1.23.1 | [dlv-v1.23.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.23.1) |
+| v1.23.0 | [dlv-v1.23.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.23.0) |
 | v1.22.1 | [dlv-v1.22.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.22.1) |
 | v1.22.0 | [dlv-v1.22.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.22.0) |
 | v1.21.2 | [dlv-v1.21.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.21.2) |
