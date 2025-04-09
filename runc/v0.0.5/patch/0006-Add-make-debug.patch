@@ -1,0 +1,44 @@
+diff --git a/Makefile b/Makefile
+index ba23d34..b21502e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -26,6 +26,14 @@ test: runctestimage
+ shell:
+ 	docker run -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
+ 
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
++	mv runc runc-v0.0.5-debug
++	mv debug-flag.go.bak debug-flag.go
++	make static BUILDTAGS="seccomp selinux apparmor static" EXTRA_FLAGS='-gcflags="-N -l"'
++	mv runc runc-v0.0.5-debug-flag
++
+ localtest:
+ 	go test -tags "$(BUILDTAGS)" ${TESTFLAGS} -v ./...
+ 
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file
