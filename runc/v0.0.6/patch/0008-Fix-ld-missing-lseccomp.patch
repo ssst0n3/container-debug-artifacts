@@ -1,0 +1,15 @@
+diff --git a/Dockerfile b/Dockerfile
+index 600ad8a..008141c 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -15,8 +15,8 @@ RUN apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecure
+ 	protobuf-compiler \
+ 	python-minimal \
+ 	iptables \
+-	libseccomp2 \
+-	libseccomp-dev \
++	libseccomp2/jessie-backports \
++	libseccomp-dev/jessie-backports \
+ 	--no-install-recommends
+ 
+ # install criu
