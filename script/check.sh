@@ -4,13 +4,25 @@ trap 'echo "force kill all process"; kill -- -$$ 2>/dev/null; exit 1' SIGINT
 
 check() {
     local tag="$1"
-    timeout 5s docker manifest inspect "$tag" 2>&1 | grep -q 'no such manifest'
-    case $? in
-        0)  echo "$tag ❌" ;;
-        1)  echo "$tag ✔️" ;;
-        124) echo "$tag ⌛ TIMEOUT" ;;
-        *)  echo "$tag ⚠️  UNKNOWN ERROR" ;;
-    esac
+    local output
+    output=$(timeout 10s docker manifest inspect "$tag" 2>&1)
+    local exit_code=$?
+
+    if [[ $exit_code -eq 124 ]]; then
+        echo "$tag ⌛ TIMEOUT"
+        return
+    fi
+
+    if [[ $exit_code -eq 0 ]]; then
+        echo "$tag ✔️"
+    else
+        case $output in
+            *"no such manifest"* | *"manifest unknown"*)
+                echo "$tag ❌ NOT EXISTS" ;;
+            *)
+                echo "$tag ⚠️ UNKNOWN ERROR: ${output:0:200}" ;;
+        esac
+    fi
 }
 
 while IFS= read -r -d '' patch_file; do
