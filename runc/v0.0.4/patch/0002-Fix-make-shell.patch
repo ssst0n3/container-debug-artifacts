@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index 520b012..b306dbc 100644
+--- a/Makefile
++++ b/Makefile
+@@ -20,6 +20,9 @@ runctestimage:
+ test: runctestimage
+ 	docker run -e TESTFLAGS --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_TEST_IMAGE) make localtest
+ 
++shell:
++	docker run -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_IMAGE) bash
++
+ localtest:
+ 	go test -tags "$(BUILDTAGS)" ${TESTFLAGS} -v ./...
+ 
