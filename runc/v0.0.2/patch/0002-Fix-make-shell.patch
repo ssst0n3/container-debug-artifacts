@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index d576d08..e074a05 100644
+--- a/Makefile
++++ b/Makefile
+@@ -19,6 +19,9 @@ runctestimage:
+ test: runctestimage
+ 	docker run --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) $(RUNC_TEST_IMAGE) make localtest
+ 
++shell:
++	docker run -ti --privileged --rm -v $(CURDIR):/go/src/$(PROJECT) --entrypoint=/bin/bash $(RUNC_IMAGE)
++
+ localtest:
+ 	go test -v ./...
+ 
