@@ -1,0 +1,18 @@
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..2bef485
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,12 @@
++FROM golang:1.4
++
++RUN echo "deb http://ftp.us.debian.org/debian testing main contrib" >> /etc/apt/sources.list
++RUN apt-get update && apt-get install -y iptables criu=1.6-2 libseccomp2 libseccomp-dev && rm -rf /var/lib/apt/lists/*
++
++# setup a playground for us to spawn containers in
++RUN mkdir /busybox && \
++    curl -sSL 'https://github.com/jpetazzo/docker-busybox/raw/buildroot-2014.11/rootfs.tar' | tar -xC /busybox
++
++COPY script/tmpmount /
++WORKDIR /go/src/github.com/opencontainers/runc
++ENTRYPOINT ["/tmpmount"]
