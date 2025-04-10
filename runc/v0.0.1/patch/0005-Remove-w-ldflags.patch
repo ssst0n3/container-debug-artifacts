@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index fd37ef7..a059226 100644
+--- a/Makefile
++++ b/Makefile
+@@ -6,6 +6,9 @@ export GOPATH:=$(CURDIR)/Godeps/_workspace:$(GOPATH)
+ all:
+ 	go build -o runc .
+ 
++static:
++	CGO_ENABLED=1 go build -tags "$(BUILDTAGS) cgo static_build" -ldflags "-extldflags -static" -o runc .
++
+ vet:
+ 	go get golang.org/x/tools/cmd/vet
+ 
