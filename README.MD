@@ -15,6 +15,8 @@ Next step:
 
 | version                                                                                              | binary                                                                                                                                       | available dlv | note |
 |------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------| --- | --- |
+| [v1.2.6](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.2.6) | [runc-v1.2.6-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.6-debug) |
+| | [runc-v1.2.6-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.6-debug-flag) |
 | [v1.2.4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.2.4) | [runc-v1.2.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.4-debug) |
 | | [runc-v1.2.4-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.4-debug-flag) |
 | [v1.1.13](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.13)               | [runc-v1.1.13-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.13-debug)                         |  |
