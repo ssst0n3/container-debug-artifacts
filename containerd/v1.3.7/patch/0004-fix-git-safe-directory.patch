@@ -1,0 +1,9 @@
+diff --git a/contrib/Dockerfile.test b/contrib/Dockerfile.test
+index 861c5c7..5343403 100644
+--- a/contrib/Dockerfile.test
++++ b/contrib/Dockerfile.test
+@@ -53,3 +53,4 @@ COPY --from=proto3 /usr/local/include/google /usr/local/include/google
+ COPY --from=runc   /usr/local/sbin/runc      /usr/local/go/bin/runc
+ 
+ COPY . .
++RUN git config --global --add safe.directory /go/src/github.com/containerd/containerd

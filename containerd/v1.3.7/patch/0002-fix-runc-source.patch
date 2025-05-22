@@ -1,0 +1,16 @@
+diff --git a/script/setup/install-runc b/script/setup/install-runc
+index 0218e71..2d381c6 100755
+--- a/script/setup/install-runc
++++ b/script/setup/install-runc
+@@ -23,8 +23,8 @@ set -eu -o pipefail
+ 
+ RUNC_COMMIT=$(grep opencontainers/runc ${GOPATH}/src/github.com/containerd/containerd/vendor.conf | awk '{print $2}')
+ 
+-go get -d github.com/opencontainers/runc
++mkdir -p $GOPATH/src/github.com/opencontainers
++git clone --depth=1 --branch $RUNC_COMMIT https://github.com/opencontainers/runc.git $GOPATH/src/github.com/opencontainers/runc
+ cd $GOPATH/src/github.com/opencontainers/runc
+-git checkout $RUNC_COMMIT
+ make BUILDTAGS="seccomp apparmor selinux" runc
+-sudo make install
++make install
