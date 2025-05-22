@@ -144,6 +144,18 @@ Next step:
 |         | [containerd-v1.6.27-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v1.6.27-debug-flag) | | 
 |         | [ctr-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug) | | 
 |         | [ctr-v1.6.27-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.6.27-debug-flag) | | 
+| [v1.3.7](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v1.3.7) | [containerd-shim-runc-v1-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v1-v1.3.7-debug) |  | 
+|         | [containerd-shim-runc-v1-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v1-v1.3.7-debug-flag) | | 
+|         | [containerd-shim-runc-v2-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v1.3.7-debug) | | 
+|         | [containerd-shim-runc-v2-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v1.3.7-debug-flag) | | 
+|         | [containerd-shim-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-v1.3.7-debug) | | 
+|         | [containerd-shim-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-v1.3.7-debug-flag) | | 
+|         | [containerd-stress-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-stress-v1.3.7-debug) | | 
+|         | [containerd-stress-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-stress-v1.3.7-debug-flag) | | 
+|         | [containerd-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v1.3.7-debug) | | 
+|         | [containerd-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v1.3.7-debug-flag) | | 
+|         | [ctr-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.3.7-debug) | | 
+|         | [ctr-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.3.7-debug-flag) | | 
 
 ## docker
 

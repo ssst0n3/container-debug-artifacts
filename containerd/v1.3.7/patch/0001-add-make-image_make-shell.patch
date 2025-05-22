@@ -1,0 +1,19 @@
+diff --git a/Makefile b/Makefile
+index c1ea1dd..c1cc845 100644
+--- a/Makefile
++++ b/Makefile
+@@ -311,3 +311,14 @@ vendor:
+ 
+ help: ## this help
+ 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
++
++RELEASE_VER := $(shell git tag)
++CONTAINERD_IMAGE := ssst0n3/containerd_dev:${RELEASE_VER}
++
++.PHONY: image
++image:
++	docker buildx build -f contrib/Dockerfile.test -t ${CONTAINERD_IMAGE} .
++
++.PHONY: shell
++shell:
++	docker run -ti -v $(shell pwd):/go/src/github.com/containerd/containerd ${CONTAINERD_IMAGE} bash

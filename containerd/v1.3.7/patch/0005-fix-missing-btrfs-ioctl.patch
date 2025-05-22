@@ -1,0 +1,12 @@
+diff --git a/contrib/Dockerfile.test b/contrib/Dockerfile.test
+index 5343403..ae0f9fc 100644
+--- a/contrib/Dockerfile.test
++++ b/contrib/Dockerfile.test
+@@ -41,6 +41,7 @@ RUN ./install-runc
+ FROM golang-base AS dev
+ RUN apt-get update && apt-get install -y \
+     btrfs-tools \
++    libbtrfs-dev \
+     gcc \
+     git \
+     libseccomp-dev \
