@@ -1,0 +1,41 @@
+diff --git a/Makefile b/Makefile
+index facb988..c2736d5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -198,3 +198,11 @@ validate-keyring:
+ 	rootlessintegration localrootlessintegration shell install install-bash \
+ 	install-man clean cfmt shfmt localshfmt shellcheck \
+ 	vendor verify-changelog verify-dependencies validate-keyring
++
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.1.14-debug
++	mv debug-flag.go.bak debug-flag.go
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.1.14-debug-flag
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file

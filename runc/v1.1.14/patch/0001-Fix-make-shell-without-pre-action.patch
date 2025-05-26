@@ -1,0 +1,22 @@
+diff --git a/Makefile b/Makefile
+index 452ee94..facb988 100644
+--- a/Makefile
++++ b/Makefile
+@@ -7,7 +7,7 @@ MANDIR := $(PREFIX)/share/man
+ 
+ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+ GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
+-RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
++RUNC_IMAGE := ssst0n3/runc_dev:v1.1.14
+ PROJECT := github.com/opencontainers/runc
+ BUILDTAGS ?= seccomp
+ 
+@@ -131,7 +131,7 @@ rootlessintegration: runcimage
+ localrootlessintegration: all
+ 	tests/rootless.sh
+ 
+-shell: runcimage
++shell:
+ 	$(CONTAINER_ENGINE) run $(CONTAINER_ENGINE_RUN_FLAGS) \
+ 		-ti --privileged --rm \
+ 		-v $(CURDIR):/go/src/$(PROJECT) \
