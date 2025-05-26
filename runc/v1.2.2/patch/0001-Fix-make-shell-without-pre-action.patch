@@ -7,7 +7,7 @@ index 0a15fd9..10b918e 100644
  GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
  GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
 -RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
-+RUNC_IMAGE := ssst0n3/runc_dev:v1.2.3
++RUNC_IMAGE := ssst0n3/runc_dev:v1.2.2
  PROJECT := github.com/opencontainers/runc
  EXTRA_BUILDTAGS :=
  BUILDTAGS := seccomp urfave_cli_no_docs

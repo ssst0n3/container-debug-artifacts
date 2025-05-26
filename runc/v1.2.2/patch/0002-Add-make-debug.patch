@@ -10,10 +10,10 @@ index 10b918e..a1a7795 100644
 +debug:
 +	mv debug-flag.go debug-flag.go.bak || echo ""
 +	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
-+	mv runc runc-v1.2.3-debug
++	mv runc runc-v1.2.2-debug
 +	mv debug-flag.go.bak debug-flag.go
 +	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
-+	mv runc runc-v1.2.3-debug-flag
++	mv runc runc-v1.2.2-debug-flag
 diff --git a/debug-flag.go b/debug-flag.go
 new file mode 100644
 index 0000000..647ef4d
