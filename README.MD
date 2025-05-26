@@ -21,6 +21,8 @@ Next step:
 | | [runc-v1.2.5-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.5-debug-flag) |
 | [v1.2.4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.2.4) | [runc-v1.2.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.4-debug) |
 | | [runc-v1.2.4-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.4-debug-flag) |
+| [v1.2.3](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.2.3) | [runc-v1.2.3-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.3-debug) |
+| | [runc-v1.2.3-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.2.3-debug-flag) |
 | [v1.1.13](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.13)               | [runc-v1.1.13-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.13-debug)                         |  |
 |                                                                                                      | [runc-v1.1.13-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.13-debug-flag)               |  |
 | [v1.1.0-a6f4081](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.1.0-a6f4081) | [runc-v1.1.0-a6f4081-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.1.0-a6f4081-debug)           |  | 2023-11-28 committed |
