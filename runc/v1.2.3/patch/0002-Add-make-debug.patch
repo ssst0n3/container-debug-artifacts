@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index 61cf97a..cf81759 100644
+index 10b918e..a1a7795 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -256,3 +256,11 @@ verify-dependencies: vendor
+@@ -248,3 +248,11 @@ verify-dependencies: vendor
  .PHONY: validate-keyring
  validate-keyring:
  	script/keyring_validate.sh

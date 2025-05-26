@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 0a15fd9..61cf97a 100644
+index 0a15fd9..10b918e 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -9,7 +9,7 @@ MANDIR := $(PREFIX)/share/man
@@ -11,25 +11,12 @@ index 0a15fd9..61cf97a 100644
  PROJECT := github.com/opencontainers/runc
  EXTRA_BUILDTAGS :=
  BUILDTAGS := seccomp urfave_cli_no_docs
-@@ -185,12 +185,20 @@ localrootlessintegration: all
+@@ -185,7 +185,7 @@ localrootlessintegration: all
  	tests/rootless.sh
  
  .PHONY: shell
 -shell: runcimage
-+shell: 
++shell:
  	$(CONTAINER_ENGINE) run $(CONTAINER_ENGINE_RUN_FLAGS) \
  		-ti --privileged --rm \
  		-v $(CURDIR):/go/src/$(PROJECT) \
- 		$(RUNC_IMAGE) bash
- 
-+debug:
-+	mv debug-flag.go debug-flag.go.bak || echo ""
-+	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
-+	mv runc runc-v1.2.3-debug
-+	mv debug-flag.go.bak debug-flag.go
-+	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
-+	mv runc runc-v1.2.3-debug-flag
-+
- .PHONY: install
- install:
- 	install -D -m0755 runc $(DESTDIR)$(BINDIR)/runc
