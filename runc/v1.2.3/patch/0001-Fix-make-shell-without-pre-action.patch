@@ -1,8 +1,17 @@
 diff --git a/Makefile b/Makefile
-index 0a15fd9..946fe8e 100644
+index 0a15fd9..61cf97a 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -185,7 +185,7 @@ localrootlessintegration: all
+@@ -9,7 +9,7 @@ MANDIR := $(PREFIX)/share/man
+ 
+ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+ GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
+-RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
++RUNC_IMAGE := ssst0n3/runc_dev:v1.2.3
+ PROJECT := github.com/opencontainers/runc
+ EXTRA_BUILDTAGS :=
+ BUILDTAGS := seccomp urfave_cli_no_docs
+@@ -185,12 +185,20 @@ localrootlessintegration: all
  	tests/rootless.sh
  
  .PHONY: shell
@@ -11,3 +20,16 @@ index 0a15fd9..946fe8e 100644
  	$(CONTAINER_ENGINE) run $(CONTAINER_ENGINE_RUN_FLAGS) \
  		-ti --privileged --rm \
  		-v $(CURDIR):/go/src/$(PROJECT) \
+ 		$(RUNC_IMAGE) bash
+ 
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.2.3-debug
++	mv debug-flag.go.bak debug-flag.go
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.2.3-debug-flag
++
+ .PHONY: install
+ install:
+ 	install -D -m0755 runc $(DESTDIR)$(BINDIR)/runc
