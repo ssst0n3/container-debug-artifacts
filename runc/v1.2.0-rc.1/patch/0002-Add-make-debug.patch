@@ -1,0 +1,41 @@
+diff --git a/Makefile b/Makefile
+index 10b918e..a1a7795 100644
+--- a/Makefile
++++ b/Makefile
+@@ -248,3 +248,11 @@ verify-dependencies: vendor
+ .PHONY: validate-keyring
+ validate-keyring:
+ 	script/keyring_validate.sh
++
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.2.0-rc.1-debug
++	mv debug-flag.go.bak debug-flag.go
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-v1.2.0-rc.1-debug-flag
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file
