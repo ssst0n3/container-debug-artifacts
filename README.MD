@@ -230,7 +230,8 @@ Next step:
 | v1.6.1 | [dlv-v1.6.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.6.1) |
 | v1.6.0 | [dlv-v1.6.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.6.0) |
 | v1.5.1 | [dlv-v1.5.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.1) |
-| v1.5.0-85952c0 | [dlv-v1.5.0-85952c0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.0-85952c0) | fix 'could not attach to pid 4641: read /: is a directory' |
+| v1.5.0-fix-2168 | [dlv-v1.5.0-fix-2168](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.0-fix-2168) | v1.5.0+85952c0 |
+| v1.5.0-85952c0 | [dlv-v1.5.0-85952c0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.0-85952c0) | 85952c0 |
 | v1.5.0 | [dlv-v1.5.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.5.0) |
 | v1.4.1 | [dlv-v1.4.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.4.1) |
 | v1.4.0 | [dlv-v1.4.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.4.0) |
