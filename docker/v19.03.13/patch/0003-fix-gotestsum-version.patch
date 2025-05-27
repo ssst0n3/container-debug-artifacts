@@ -1,0 +1,12 @@
+diff --git a/hack/dockerfile/install/gotestsum.installer b/hack/dockerfile/install/gotestsum.installer
+index 1214a9e..08ad267 100755
+--- a/hack/dockerfile/install/gotestsum.installer
++++ b/hack/dockerfile/install/gotestsum.installer
+@@ -5,6 +5,7 @@
+ install_gotestsum() (
+ 	set -e
+ 	export GO111MODULE=on
++	go mod init gotest
+ 	go get -d "gotest.tools/gotestsum@${GOTESTSUM_COMMIT}"
+ 	go build -buildmode=pie -o "${PREFIX}/gotestsum" 'gotest.tools/gotestsum'
+ 

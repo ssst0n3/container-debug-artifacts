@@ -182,6 +182,7 @@ Next step:
 | version | binary | available dlv | note |
 | --- | --- | --- | --- |
 | [v28.0.4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v28.0.4) | [dockerd-v28.0.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v28.0.4-debug) |  | 
+| [v19.03.13](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v19.03.13) | [dockerd-v19.03.13-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v19.03.13-debug) |  |
 | [v0.7.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v0.7.1) | [docker-v0.7.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v0.7.1-debug) |  | 
 
 ## nvidia-container-toolkit
