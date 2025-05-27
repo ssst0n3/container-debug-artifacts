@@ -1,0 +1,67 @@
+From 85952c08267be75f85cf3ad92254cd57bebd8dc2 Mon Sep 17 00:00:00 2001
+From: Alessandro Arzilli <alessandro.arzilli@gmail.com>
+Date: Tue, 15 Sep 2020 23:49:30 +0200
+Subject: [PATCH] proc: resolve symlinks when searching for split debug_info if
+ path is /proc/pid/exe (#2170)
+
+* Revert "proc: Find executable should follow symbol links."
+
+This reverts commit 3e04ad0fada0c3ab57caf58bc024e4c0f9a3e01a.
+
+* proc: resolve symlinks when searching for split debug_info if path is /proc/pid/exe
+
+Fixes #2168
+---
+ pkg/proc/bininfo.go           |  5 +++++
+ pkg/proc/native/proc_linux.go | 15 ++++++---------
+ 2 files changed, 11 insertions(+), 9 deletions(-)
+
+diff --git a/pkg/proc/bininfo.go b/pkg/proc/bininfo.go
+index d97251ffeb..c755ef175c 100644
+--- a/pkg/proc/bininfo.go
++++ b/pkg/proc/bininfo.go
+@@ -1037,6 +1037,11 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
+ 				continue
+ 			}
+ 			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
++		} else if strings.HasPrefix(image.Path, "/proc") {
++			path, err := filepath.EvalSymlinks(image.Path)
++			if err == nil {
++				potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(path))
++			}
+ 		} else {
+ 			potentialDebugFilePath = fmt.Sprintf("%s/%s.debug", dir, filepath.Base(image.Path))
+ 		}
+diff --git a/pkg/proc/native/proc_linux.go b/pkg/proc/native/proc_linux.go
+index 605819bc9a..c742334977 100644
+--- a/pkg/proc/native/proc_linux.go
++++ b/pkg/proc/native/proc_linux.go
+@@ -130,12 +130,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
+ 		return nil, err
+ 	}
+ 
+-	execPath, err := findExecutable(pid)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	tgt, err := dbp.initialize(execPath, debugInfoDirs)
++	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
+ 	if err != nil {
+ 		_ = dbp.Detach(false)
+ 		return nil, err
+@@ -265,9 +260,11 @@ func (dbp *nativeProcess) updateThreadList() error {
+ 	return linutil.ElfUpdateSharedObjects(dbp)
+ }
+ 
+-func findExecutable(pid int) (string, error) {
+-	path := fmt.Sprintf("/proc/%d/exe", pid)
+-	return filepath.EvalSymlinks(path)
++func findExecutable(path string, pid int) string {
++	if path == "" {
++		path = fmt.Sprintf("/proc/%d/exe", pid)
++	}
++	return path
+ }
+ 
+ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {

@@ -1,0 +1,28 @@
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..120811a
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,6 @@
++ARG GO_VERSION=1.12
++ARG BASE_DEBIAN_DISTRO="buster"
++ARG GOLANG_IMAGE="golang:${GO_VERSION}-${BASE_DEBIAN_DISTRO}"
++
++FROM ${GOLANG_IMAGE} AS base
++ENV CGO_ENABLED=0 GO111MODULE=on
+\ No newline at end of file
+diff --git a/Makefile b/Makefile
+index 813e0b3..f0f7dd9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -28,3 +28,10 @@ vendor:
+ 	@go run _scripts/make.go vendor
+ 
+ .PHONY: vendor test-integration-run test-proc-run test check-cert install build vet
++
++.PHONY: image shell
++DELVE_IMAGE=ssst0n3/delve_dev:v1.5.0-fix-2168
++image:
++	docker build -t $(DELVE_IMAGE) .
++shell:
++	docker run -ti -v $(PWD):/go/src/github.com/go-delve/delve -w /go/src/github.com/go-delve/delve $(DELVE_IMAGE) bash
