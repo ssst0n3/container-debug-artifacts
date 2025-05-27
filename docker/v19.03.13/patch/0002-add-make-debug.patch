@@ -1,0 +1,22 @@
+diff --git a/Makefile b/Makefile
+index 580dcd6..81348a4 100644
+--- a/Makefile
++++ b/Makefile
+@@ -81,7 +81,7 @@ DOCKER_ENVS := \
+ # to allow `make BIND_DIR=. shell` or `make BIND_DIR= test`
+ # (default to no bind mount if DOCKER_HOST is set)
+ # note: BINDDIR is supported for backwards-compatibility here
+-BIND_DIR := $(if $(BINDDIR),$(BINDDIR),$(if $(DOCKER_HOST),,bundles))
++BIND_DIR := .
+ 
+ # DOCKER_MOUNT can be overriden, but use at your own risk!
+ ifndef DOCKER_MOUNT
+@@ -226,3 +226,8 @@ swagger-docs: ## preview the API documentation
+ 
+ .PHONY: image
+ image: build
++
++.PHONY: debug
++debug:
++	DOCKER_DEBUG=1 VERSION=${RELEASE_VER} ./hack/make.sh binary
++	cp bundles/binary-daemon/dockerd bundles/binary-daemon/dockerd-v19.03.13-debug
