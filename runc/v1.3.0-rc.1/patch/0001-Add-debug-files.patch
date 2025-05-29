@@ -1,0 +1,41 @@
+diff --git a/Makefile.debug b/Makefile.debug
+new file mode 100644
+index 0000000..9e80ff7
+--- /dev/null
++++ b/Makefile.debug
+@@ -0,0 +1,10 @@
++RUNC_IMAGE := ssst0n3/runc_dev:v1.3.0-rc.1
++RELEASE_VER := $(shell git tag)
++.PHONY: debug
++debug:
++	mv debug-flag.go debug-flag.go.bak || echo ""
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-$(RELEASE_VER)-debug
++	mv debug-flag.go.bak debug-flag.go
++	make EXTRA_FLAGS='-gcflags="all=-N -l"' static
++	mv runc runc-$(RELEASE_VER)-debug-flag
+diff --git a/debug-flag.go b/debug-flag.go
+new file mode 100644
+index 0000000..647ef4d
+--- /dev/null
++++ b/debug-flag.go
+@@ -0,0 +1,18 @@
++package main
++
++import (
++	"os"
++	"time"
++)
++
++func init() {
++	if len(os.Args) > 1 && os.Args[1] == "init" {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+\ No newline at end of file
