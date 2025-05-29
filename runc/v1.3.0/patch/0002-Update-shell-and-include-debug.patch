@@ -1,0 +1,19 @@
+diff --git a/Makefile b/Makefile
+index 39c1ef9..c671aa0 100644
+--- a/Makefile
++++ b/Makefile
+@@ -186,7 +186,7 @@ localrootlessintegration: runc test-binaries
+ 	tests/rootless.sh
+ 
+ .PHONY: shell
+-shell: runcimage
++shell: 
+ 	$(CONTAINER_ENGINE) run $(CONTAINER_ENGINE_RUN_FLAGS) \
+ 		-ti --privileged --rm \
+ 		-v $(CURDIR):/go/src/$(PROJECT) \
+@@ -249,3 +249,4 @@ verify-dependencies: vendor
+ .PHONY: validate-keyring
+ validate-keyring:
+ 	script/keyring_validate.sh
++include Makefile.debug
+\ No newline at end of file
