@@ -152,6 +152,15 @@ Next step:
 
 | version | binary | available dlv | note |
 | --- | --- | --- | --- |
+| [v2.1.0](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v2.1.0) | - |
+| :arrow_up: | [containerd-v2.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.1.0-debug) |
+| :arrow_up: | [containerd-v2.1.0-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.1.0-debug-flag) |
+| :arrow_up: | [ctr-v2.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v2.1.0-debug) |
+| :arrow_up: | [ctr-v2.1.0-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v2.1.0-debug-flag) |
+| :arrow_up: | [containerd-shim-runc-v2-v2.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v2.1.0-debug) |
+| :arrow_up: | [containerd-shim-runc-v2-v2.1.0-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v2.1.0-debug-flag) |
+| :arrow_up: | [containerd-stress-v2.1.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-stress-v2.1.0-debug) |
+| :arrow_up: | [containerd-stress-v2.1.0-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-stress-v2.1.0-debug-flag) |
 | [v1.6.27](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v1.6.27) | [containerd-shim-runc-v1-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v1-v1.6.27-debug) |  | 
 |         | [containerd-shim-runc-v1-v1.6.27-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v1-v1.6.27-debug-flag) | | 
 |         | [containerd-shim-runc-v2-v1.6.27-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v1.6.27-debug) | | 

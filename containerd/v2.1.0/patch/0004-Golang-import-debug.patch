@@ -1,0 +1,60 @@
+diff --git a/cmd/containerd-shim-runc-v2/main.go b/cmd/containerd-shim-runc-v2/main.go
+index d6f1199..cd271b9 100644
+--- a/cmd/containerd-shim-runc-v2/main.go
++++ b/cmd/containerd-shim-runc-v2/main.go
+@@ -18,6 +18,10 @@
+ 
+ package main
+ 
++import (
++    _ "github.com/containerd/containerd/v2/debug"
++)
++
+ import (
+ 	"context"
+ 
+diff --git a/cmd/containerd-stress/main.go b/cmd/containerd-stress/main.go
+index 5739b0f..6707b9e 100644
+--- a/cmd/containerd-stress/main.go
++++ b/cmd/containerd-stress/main.go
+@@ -16,6 +16,10 @@
+ 
+ package main
+ 
++import (
++	_ "github.com/containerd/containerd/v2/debug"
++)
++
+ import (
+ 	"context"
+ 	"encoding/json"
+diff --git a/cmd/containerd/main.go b/cmd/containerd/main.go
+index 04cdf1f..b95d3fa 100644
+--- a/cmd/containerd/main.go
++++ b/cmd/containerd/main.go
+@@ -16,6 +16,10 @@
+ 
+ package main
+ 
++import (
++    _ "github.com/containerd/containerd/v2/debug"
++)
++
+ import (
+ 	"fmt"
+ 	"os"
+diff --git a/cmd/ctr/main.go b/cmd/ctr/main.go
+index 42bb89f..8873396 100644
+--- a/cmd/ctr/main.go
++++ b/cmd/ctr/main.go
+@@ -16,6 +16,10 @@
+ 
+ package main
+ 
++import (
++	_ "github.com/containerd/containerd/v2/debug"
++)
++
+ import (
+ 	"fmt"
+ 	"os"
