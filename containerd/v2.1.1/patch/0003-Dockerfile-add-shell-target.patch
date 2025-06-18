@@ -1,0 +1,16 @@
+diff --git a/.github/workflows/release/Dockerfile b/.github/workflows/release/Dockerfile
+index eaecc61..4ccc8f1 100644
+--- a/.github/workflows/release/Dockerfile
++++ b/.github/workflows/release/Dockerfile
+@@ -38,6 +38,11 @@ FROM base AS windows
+ ARG GATEWAY
+ ARG PREFIX_LEN
+ 
++FROM ${TARGETOS} AS shell
++WORKDIR /go/src/github.com/containerd/containerd
++COPY --from=go /usr/local/go /usr/local/go
++RUN git config --global --add safe.directory /go/src/github.com/containerd/containerd
++
+ FROM ${TARGETOS} AS target
+ WORKDIR /go/src/github.com/containerd/containerd
+ COPY . .
