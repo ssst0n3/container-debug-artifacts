@@ -1,0 +1,26 @@
+diff --git a/Makefile b/Makefile
+index 445ddd7..cc8692c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -97,7 +97,7 @@ install: ## install the linux binaries
+ rpm: build ## build the rpm packages
+ 	$(DOCKER_RUN_DOCKER) hack/make.sh dynbinary build-rpm
+ 
+-shell: build ## start a shell inside the build env
++shell_: build ## start a shell inside the build env
+ 	$(DOCKER_RUN_DOCKER) bash
+ 
+ test: build ## run the unit, integration and docker-py tests
+@@ -124,3 +124,12 @@ manpages: ## Generate man pages from go source and markdown
+ help: ## this help
+ 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {sub("\\\\n",sprintf("\n%22c"," "), $$2);printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+ 
++RELEASE_VER := $(shell git tag)
++DOCKER_IMAGE := ssst0n3/docker_dev:${RELEASE_VER}
++
++.PHONY: image shell binary
++image:
++	docker build -t ${DOCKER_IMAGE} .
++
++shell:
++	docker run --entrypoint=/bin/sh -ti -v $(shell pwd):/go/src/github.com/docker/docker ${DOCKER_IMAGE}
