@@ -1,0 +1,21 @@
+diff --git a/Makefile b/Makefile
+index 2589fa2..258de40 100644
+--- a/Makefile
++++ b/Makefile
+@@ -133,3 +133,15 @@ image:
+ 
+ shell:
+ 	docker run --entrypoint=/bin/sh -ti -v $(shell pwd):/go/src/github.com/docker/docker ${DOCKER_IMAGE}
++
++debug:
++	DOCKER_DEBUG=1 hack/make.sh binary
++	mkdir -p bin
++	cp bundles/1.12.3-rc1/binary-daemon/dockerd-1.12.3-rc1 bin/dockerd-${RELEASE_VER}-debug
++	cp bundles/1.12.3-rc1/binary-daemon/docker-proxy-1.12.3-rc1 bin/docker-proxy-${RELEASE_VER}-debug
++	cp bundles/1.12.3-rc1/binary-daemon/docker-containerd bin/docker-containerd-${RELEASE_VER}-debug
++	cp bundles/1.12.3-rc1/binary-daemon/docker-containerd-ctr bin/docker-containerd-ctr-${RELEASE_VER}-debug
++	cp bundles/1.12.3-rc1/binary-daemon/docker-containerd-shim bin/docker-containerd-shim-${RELEASE_VER}-debug
++	cp bundles/1.12.3-rc1/binary-daemon/docker-runc bin/docker-runc-${RELEASE_VER}-debug
++	cp bundles/1.12.3-rc1/binary-client/docker-1.12.3-rc1 bin/docker-${RELEASE_VER}-debug
++	# todo: add debug flag
+\ No newline at end of file

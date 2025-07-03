@@ -213,6 +213,13 @@ Next step:
 | --- | --- | --- | --- |
 | [v28.0.4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v28.0.4) | [dockerd-v28.0.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v28.0.4-debug) |  | 
 | [v19.03.13](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v19.03.13) | [dockerd-v19.03.13-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v19.03.13-debug) |  |
+| [v1.12.3-rc1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v1.12.3-rc1) | [dockerd-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v1.12.3-rc1-debug) |  |
+| | [docker-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v1.12.3-rc1-debug) |  |
+| | [docker-containerd-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-containerd-v1.12.3-rc1-debug) |
+| | [docker-containerd-shim-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-containerd-shim-v1.12.3-rc1-debug) |
+| | [docker-containerd-ctr-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-containerd-ctr-v1.12.3-rc1-debug) |
+| | [docker-proxy-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-proxy-v1.12.3-rc1-debug) |
+| | [docker-runc-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-runc-v1.12.3-rc1-debug) |
 | [v0.7.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v0.7.1) | [docker-v0.7.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v0.7.1-debug) |  | 
 
 ## nvidia-container-toolkit
