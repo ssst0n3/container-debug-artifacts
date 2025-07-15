@@ -1,0 +1,16 @@
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..a2cd1e9
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,10 @@
++# https://github.com/mgoltzsche/podman-static/blob/v5.5.1/Dockerfile#L28-L44
++FROM golang:1.23-alpine3.20
++RUN apk add --update --no-cache git make gcc pkgconf musl-dev \
++	btrfs-progs btrfs-progs-dev libassuan-dev lvm2-dev device-mapper \
++	glib-static libc-dev gpgme-dev protobuf-dev protobuf-c-dev \
++	libseccomp-dev libseccomp-static libselinux-dev ostree-dev openssl iptables \
++	bash go-md2man
++COPY . /go/src/github.com/containers/podman
++WORKDIR /go/src/github.com/containers/podman
++RUN git config --global --add safe.directory /go/src/github.com/containers/podman
