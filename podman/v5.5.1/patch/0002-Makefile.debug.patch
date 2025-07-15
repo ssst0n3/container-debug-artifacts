@@ -1,0 +1,19 @@
+diff --git a/Makefile.debug b/Makefile.debug
+new file mode 100644
+index 0000000..2ed3781
+--- /dev/null
++++ b/Makefile.debug
+@@ -0,0 +1,13 @@
++.PHONY: image shell debug
++
++RELEASE_VER := $(shell git tag)
++DEV_IMAGE := ssst0n3/podman_dev:${RELEASE_VER}
++image:
++	docker buildx build -f Dockerfile -t ${DEV_IMAGE} .
++
++shell:
++	docker run -ti -v $(shell pwd):/go/src/github.com/containers/podman ${DEV_IMAGE} bash
++
++debug:
++	CGO_ENABLED=1 make bin/podman BUILDFLAGS='-gcflags="all=-N -l"' LDFLAGS_PODMAN="-extldflags '-static'" BUILDTAGS='seccomp selinux apparmor exclude_graphdriver_devicemapper containers_image_openpgp'
++	mv bin/podman bin/podman-${RELEASE_VER}-debug

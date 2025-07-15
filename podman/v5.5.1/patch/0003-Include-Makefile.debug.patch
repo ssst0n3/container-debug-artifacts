@@ -1,0 +1,10 @@
+diff --git a/Makefile b/Makefile
+index 611079f..33fa2e5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1121,3 +1121,5 @@ clean: clean-binaries ## Clean all make artifacts
+ 		docs/build \
+ 		.venv
+ 	make -C docs clean
++
++include Makefile.debug
