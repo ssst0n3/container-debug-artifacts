@@ -222,6 +222,12 @@ Next step:
 | | [docker-runc-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-runc-v1.12.3-rc1-debug) |
 | [v0.7.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v0.7.1) | [docker-v0.7.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v0.7.1-debug) |  | 
 
+## podman
+
+| version | binary | available dlv | note |
+| --- | --- | --- | --- |
+| [v5.5.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/podman/v5.5.1/) | [podman-v5.5.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/podman/podman-v5.5.1-debug) |
+
 ## nvidia-container-toolkit
 
 | version | binary | available dlv | note |
