@@ -1,0 +1,22 @@
+diff --git a/Makefile b/Makefile
+index afbe52f..68f528f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -84,7 +84,7 @@ DOCKER_ENVS := \
+ # to allow `make BIND_DIR=. shell` or `make BIND_DIR= test`
+ # (default to no bind mount if DOCKER_HOST is set)
+ # note: BINDDIR is supported for backwards-compatibility here
+-BIND_DIR := $(if $(BINDDIR),$(BINDDIR),$(if $(DOCKER_HOST),,bundles))
++BIND_DIR := .
+ 
+ # DOCKER_MOUNT can be overridden, but use at your own risk!
+ ifndef DOCKER_MOUNT
+@@ -289,3 +289,8 @@ generate-files:
+ 		--file "./hack/dockerfiles/generate-files.Dockerfile" .
+ 	cp -R "$($@_TMP_OUT)"/. .
+ 	rm -rf "$($@_TMP_OUT)"/*
++
++.PHONY: debug
++debug:
++	DOCKER_DEBUG=1 VERSION=${RELEASE_VER} ./hack/make.sh binary
++	cp bundles/binary-daemon/dockerd bundles/binary-daemon/dockerd-v27.0.1-901-g73fabd5a21-debug

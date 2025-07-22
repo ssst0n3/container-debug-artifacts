@@ -1,0 +1,27 @@
+diff --git a/Makefile b/Makefile
+index 9fa36d9..afbe52f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -111,7 +111,8 @@ endif # ifndef DOCKER_MOUNT
+ # This allows to set the docker-dev container name
+ DOCKER_CONTAINER_NAME := $(if $(CONTAINER_NAME),--name $(CONTAINER_NAME),)
+ 
+-DOCKER_IMAGE := docker-dev
++RELEASE_VER := v27.0.1-890-ga715ccaaa3
++DOCKER_IMAGE := ssst0n3/docker_dev:${RELEASE_VER}
+ DOCKER_PORT_FORWARD := $(if $(DOCKER_PORT),-p "$(DOCKER_PORT)",)
+ DELVE_PORT_FORWARD := $(if $(DELVE_PORT),-p "$(DELVE_PORT)",)
+ 
+@@ -207,8 +208,11 @@ endif
+ build: bundles
+ 	$(BUILD_CMD) $(BUILD_OPTS) $(shell_target) --load -t "$(DOCKER_IMAGE)" .
+ 
++.PHONY: image
++image: build
++
+ .PHONY: shell
+-shell: build  ## start a shell inside the build env
++shell:
+ 	$(DOCKER_RUN_DOCKER) bash
+ 
+ .PHONY: test
