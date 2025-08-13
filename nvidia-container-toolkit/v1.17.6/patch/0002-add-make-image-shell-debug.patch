@@ -1,0 +1,109 @@
+diff --git a/Makefile b/Makefile
+index 31a06d6..0381ffb 100644
+--- a/Makefile
++++ b/Makefile
+@@ -55,7 +55,7 @@ CLI_VERSION_PACKAGE = github.com/NVIDIA/nvidia-container-toolkit/internal/info
+ 
+ binaries: cmds
+ ifneq ($(PREFIX),)
+-cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)
++cmd-%: COMMAND_BUILD_OPTIONS = -o $(PREFIX)/$(*)-v1.17.6-debug
+ endif
+ cmds: $(CMD_TARGETS)
+ 
+diff --git a/docker/Dockerfile.ubuntu.debug b/docker/Dockerfile.ubuntu.debug
+new file mode 100644
+index 0000000..f6105a9
+--- /dev/null
++++ b/docker/Dockerfile.ubuntu.debug
+@@ -0,0 +1,51 @@
++ARG BASEIMAGE
++FROM ${BASEIMAGE}
++
++ENV DEBIAN_FRONTEND=noninteractive
++RUN apt-get update && apt-get install -y --no-install-recommends \
++        wget \
++        ca-certificates \
++        git \
++        build-essential \
++        dh-make \
++        fakeroot \
++        devscripts \
++        lsb-release && \
++    rm -rf /var/lib/apt/lists/*
++
++ARG GOLANG_VERSION=0.0.0
++RUN set -eux; \
++    \
++    arch="$(uname -m)"; \
++    case "${arch##*-}" in \
++        x86_64 | amd64) ARCH='amd64' ;; \
++        ppc64el | ppc64le) ARCH='ppc64le' ;; \
++        aarch64 | arm64) ARCH='arm64' ;; \
++        *) echo "unsupported architecture" ; exit 1 ;; \
++    esac; \
++    wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${ARCH}.tar.gz \
++    | tar -C /usr/local -xz
++
++ENV GOPATH /go
++ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
++
++# packaging
++ARG PKG_NAME
++ARG PKG_VERS
++ARG PKG_REV
++
++ENV DEBFULLNAME "NVIDIA CORPORATION"
++ENV DEBEMAIL "cudatools@nvidia.com"
++ENV REVISION "$PKG_VERS-$PKG_REV"
++ENV SECTION ""
++
++# output directory
++ENV DIST_DIR=/tmp/nvidia-container-toolkit-$PKG_VERS
++RUN mkdir -p $DIST_DIR /dist
++
++# nvidia-container-toolkit
++WORKDIR $GOPATH/src/nvidia-container-toolkit
++COPY . .
++
++ARG GIT_COMMIT
++ENV GIT_COMMIT ${GIT_COMMIT}
+diff --git a/docker/docker.mk b/docker/docker.mk
+index c264b64..6f076e3 100644
+--- a/docker/docker.mk
++++ b/docker/docker.mk
+@@ -140,6 +140,34 @@ docker-build-%:
+ 	    -v $(ARTIFACTS_DIR):/dist \
+ 	    $(BUILDIMAGE)
+ 
++image:
++	docker pull --platform=linux/amd64 ubuntu:20.04
++	DOCKER_BUILDKIT=1 \
++	docker build \
++		--platform=linux/amd64 \
++		--progress=plain \
++		--build-arg BASEIMAGE="ubuntu:20.04" \
++		--build-arg GOLANG_VERSION="$(GOLANG_VERSION)" \
++		--build-arg PKG_NAME="$(LIB_NAME)" \
++		--build-arg PKG_VERS="$(PACKAGE_VERSION)" \
++		--build-arg PKG_REV="$(PACKAGE_REVISION)" \
++		--build-arg LIBNVIDIA_CONTAINER_TOOLS_VERSION="$(LIBNVIDIA_CONTAINER_TOOLS_VERSION)" \
++		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
++		--tag ssst0n3/nvidia-container-toolkit_dev:v1.17.6 \
++		--file docker/Dockerfile.ubuntu.debug .
++
++shell:
++	docker run \
++		-ti \
++	    --platform=linux/amd64 \
++	    -e DISTRIB \
++	    -e SECTION \
++	    -v $(PWD):/go/src/nvidia-container-toolkit \
++		ssst0n3/nvidia-container-toolkit_dev:v1.17.6 /bin/bash
++
++debug:
++	make PREFIX=./dist cmds
++
+ docker-clean:
+ 	IMAGES=$$(docker images "nvidia/$(LIB_NAME)/*" --format="{{.ID}}"); \
+ 	if [ "$${IMAGES}" != "" ]; then \
