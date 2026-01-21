@@ -200,6 +200,12 @@ Next step:
 |         | [containerd-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v1.3.7-debug-flag) | | 
 |         | [ctr-v1.3.7-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.3.7-debug) | | 
 |         | [ctr-v1.3.7-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v1.3.7-debug-flag) | | 
+| [v0.2.9](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v0.2.9) | [containerd-v0.2.9-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v0.2.9-debug) |
+| | [containerd-v0.2.9-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v0.2.9-debug-flag) |
+| | [containerd-shim-v0.2.9-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-v0.2.9-debug) |
+| | [containerd-shim-v0.2.9-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-v0.2.9-debug-flag) |
+| | [ctr-v0.2.9-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v0.2.9-debug) |
+| | [ctr-v0.2.9-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v0.2.9-debug-flag) |
 | [v0.2.4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v0.2.4) | [containerd-v0.2.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v0.2.4-debug) |
 | | [containerd-v0.2.4-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v0.2.4-debug-flag) |
 | | [containerd-shim-v0.2.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-v0.2.4-debug-flag) |
