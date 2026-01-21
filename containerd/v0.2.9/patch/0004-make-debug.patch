@@ -1,0 +1,42 @@
+diff --git a/Makefile b/Makefile
+index ec04bf1..ca9ec74 100644
+--- a/Makefile
++++ b/Makefile
+@@ -45,19 +45,19 @@ client: bin
+ 	cd ctr && go build -ldflags "${LDFLAGS}" -o ../bin/ctr
+ 
+ client-static:
+-	cd ctr && go build -ldflags "-w -extldflags -static ${LDFLAGS}" -tags "$(BUILDTAGS)" -o ../bin/ctr
++	cd ctr && go build -gcflags "-N -l" -ldflags "-extldflags -static ${LDFLAGS}" -tags "$(BUILDTAGS)" -o ../bin/ctr
+ 
+ daemon: bin
+ 	cd containerd && go build -ldflags "${LDFLAGS}"  -tags "$(BUILDTAGS)" -o ../bin/containerd
+ 
+ daemon-static:
+-	cd containerd && go build -ldflags "-w -extldflags -static ${LDFLAGS}" -tags "$(BUILDTAGS)" -o ../bin/containerd
++	cd containerd && go build -gcflags "-N -l" -ldflags "-extldflags -static ${LDFLAGS}" -tags "$(BUILDTAGS)" -o ../bin/containerd
+ 
+ shim: bin
+ 	cd containerd-shim && go build -tags "$(BUILDTAGS)" -ldflags "-w ${LDFLAGS}" -o ../bin/containerd-shim
+ 
+ shim-static:
+-	cd containerd-shim && go build -ldflags "-w -extldflags -static ${LDFLAGS}" -tags "$(BUILDTAGS)" -o ../bin/containerd-shim
++	cd containerd-shim && go build -gcflags "-N -l" -ldflags "-extldflags -static ${LDFLAGS}" -tags "$(BUILDTAGS)" -o ../bin/containerd-shim
+ 
+ $(TESTBENCH_BUNDLE_DIR)/busybox.tar:
+ 	mkdir -p $(TESTBENCH_BUNDLE_DIR)
+@@ -111,5 +111,14 @@ image:
+ image:
+ 	docker buildx build -f Dockerfile -t ${CONTAINERD_IMAGE} .
+ 
+ shell:
+ 	docker run -ti -v $(shell pwd):/go/src/github.com/containerd/containerd ${CONTAINERD_IMAGE} bash
++
++.PHONY: debug
++debug:
++	mv debug/00-debug-flag.go debug/00-debug-flag.go.bak || echo ""
++	make static
++	for f in ctr containerd containerd-shim; do mv bin/$${f} bin/$${f}-${RELEASE_VER}-debug; done
++	mv debug/00-debug-flag.go.bak debug/00-debug-flag.go || echo ""
++	make static
++	for f in ctr containerd containerd-shim; do mv bin/$${f} bin/$${f}-${RELEASE_VER}-debug-flag; done
