@@ -1,0 +1,32 @@
+diff --git a/Dockerfile b/Dockerfile
+index edd8654..c689cfe 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -3,8 +3,9 @@ FROM debian:jessie
+ # allow replacing httpredir mirror
+ ARG APT_MIRROR=httpredir.debian.org
+ RUN sed -i s/httpredir.debian.org/$APT_MIRROR/g /etc/apt/sources.list
+-
+-RUN apt-get update && apt-get install -y \
++RUN echo 'deb http://archive.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
++RUN sed -i -E 's/(httpredir|security|deb)\.debian\.org/archive.debian.org/g' /etc/apt/sources.list
++RUN apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=true || apt-get install -y --force-yes \
+ 	build-essential \
+ 	ca-certificates \
+ 	curl \
+@@ -17,13 +18,13 @@ RUN apt-get update && apt-get install -y \
+ 	&& rm -rf /var/lib/apt/lists/*
+ 
+ # add git repo
+-RUN apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys E1DD270288B4E6030699E45FA1715D88E1DF1F24
++RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys E1DD270288B4E6030699E45FA1715D88E1DF1F24
+ RUN echo deb http://ppa.launchpad.net/git-core/ppa/ubuntu trusty main > /etc/apt/sources.list.d/git.list
+ 
+-RUN apt-get update && apt-get install -y git
++RUN sed -i '/jessie-updates/d' /etc/apt/sources.list && apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::AllowInsecureRepositories=true || true && apt-get install -y --force-yes git
+ # Install Go
+ ENV GO_VERSION 1.8.1
+-RUN curl -sSL  "https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" | tar -v -C /usr/local -xz
++RUN curl -fsSL "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" | tar -v -C /usr/local -xz
+ ENV PATH /go/bin:/usr/local/go/bin:$PATH
+ ENV GOPATH /go:/go/src/github.com/containerd/containerd/vendor

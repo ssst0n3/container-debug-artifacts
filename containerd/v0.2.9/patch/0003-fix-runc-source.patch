@@ -1,0 +1,13 @@
+diff --git a/Dockerfile b/Dockerfile
+index c689cfe..7f34f03 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -63,7 +63,7 @@ RUN set -x \
+ ENV RUNC_COMMIT 992a5be178a62e026f4069f443c6164912adbf09
+ RUN set -x \
+ 	&& export GOPATH="$(mktemp -d)" \
+-    && git clone git://github.com/opencontainers/runc.git "$GOPATH/src/github.com/opencontainers/runc" \
++    && git clone https://github.com/opencontainers/runc.git "$GOPATH/src/github.com/opencontainers/runc" \
+ 	&& cd "$GOPATH/src/github.com/opencontainers/runc" \
+ 	&& git checkout -q "$RUNC_COMMIT" \
+ 	&& make BUILDTAGS="seccomp apparmor selinux" && make install

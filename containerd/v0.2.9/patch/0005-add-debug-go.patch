@@ -1,0 +1,41 @@
+diff --git a/debug/00-debug-flag.go b/debug/00-debug-flag.go
+new file mode 100644
+index 0000000..51129e4
+--- /dev/null
++++ b/debug/00-debug-flag.go
+@@ -0,0 +1,28 @@
++package debug
++
++import (
++	"os"
++	"strings"
++	"time"
++)
++
++func hasCmd() bool {
++	args := os.Args[1:]
++	l := len(args)
++	if l <= 1 {
++		return true
++	}
++	return strings.HasPrefix(args[l-2], "-")
++}
++
++func init() {
++	if !hasCmd() {
++		var flag bool
++		for {
++			if flag {
++				break
++			}
++			time.Sleep(time.Second)
++		}
++	}
++}
+diff --git a/debug/placeholder.go b/debug/placeholder.go
+new file mode 100644
+index 0000000..9577941
+--- /dev/null
++++ b/debug/placeholder.go
+@@ -0,0 +1 @@
++package debug

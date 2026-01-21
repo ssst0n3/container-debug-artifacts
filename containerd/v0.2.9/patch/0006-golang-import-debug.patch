@@ -1,0 +1,36 @@
+diff --git a/containerd-shim/main.go b/containerd-shim/main.go
+index 6b59f4e..05fd5a6 100644
+--- a/containerd-shim/main.go
++++ b/containerd-shim/main.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	_ "github.com/containerd/containerd/debug"
+ 	"flag"
+ 	"fmt"
+ 	"os"
+diff --git a/containerd/main.go b/containerd/main.go
+index 6b33074..d3665c4 100644
+--- a/containerd/main.go
++++ b/containerd/main.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	_ "github.com/containerd/containerd/debug"
+ 	"fmt"
+ 	"log"
+ 	"net"
+diff --git a/ctr/main.go b/ctr/main.go
+index c695b4b..8209ff5 100644
+--- a/ctr/main.go
++++ b/ctr/main.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	_ "github.com/containerd/containerd/debug"
+ 	"fmt"
+ 	"os"
+ 	"time"
