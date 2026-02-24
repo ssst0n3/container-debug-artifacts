@@ -240,6 +240,12 @@ Next step:
 | | [docker-runc-v1.12.3-rc1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-runc-v1.12.3-rc1-debug) |
 | [v0.7.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v0.7.1) | [docker-v0.7.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/docker-v0.7.1-debug) |  | 
 
+## kubernetes
+
+| version | binary | dlv | note |
+| --- | --- | --- | --- |
+| [v1.33.8](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.33.8) | [kubelet-v1.33.8-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.33.8-debug) |
+
 ## podman
 
 | version | binary | available dlv | note |
