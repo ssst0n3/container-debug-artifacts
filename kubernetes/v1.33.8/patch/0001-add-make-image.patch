@@ -1,0 +1,32 @@
+diff --git a/build/root/Makefile b/build/root/Makefile
+index f463cd96..3167859b 100644
+--- a/build/root/Makefile
++++ b/build/root/Makefile
+@@ -374,6 +374,27 @@ define RELEASE_HELP_INFO
+ #   make release-in-a-container
+ endef
+ .PHONY: release release-in-a-container
++
++RELEASE_VER := $(shell git tag)
++KUBE_IMAGE := ssst0n3/kubernetes_dev:${RELEASE_VER}
++KUBE_BASE_IMAGE_REGISTRY ?= registry.k8s.io/build-image
++KUBE_CROSS_IMAGE ?= $(KUBE_BASE_IMAGE_REGISTRY)/kube-cross
++KUBE_CROSS_VERSION ?= $(shell cat build/build-image/cross/VERSION)
++
++.PHONY: image
++image:
++	@set -e; \
++	build/make-build-image.sh; \
++	build_image=$$(bash -c 'source build/common.sh >/dev/null; kube::build::verify_prereqs false >/dev/null; echo "$$KUBE_BUILD_IMAGE"'); \
++	docker tag "$$build_image" "$(KUBE_IMAGE)"; \
++	echo "Built image registry: $(KUBE_IMAGE)"
++
++
++.PHONY: shell
++shell:
++	@docker run -ti \
++		-v $(shell pwd):/go/src/k8s.io/kubernetes \
++		${KUBE_IMAGE} bash
+ ifeq ($(PRINT_HELP),y)
+ release release-in-a-container:
+ 	echo "$$RELEASE_HELP_INFO"

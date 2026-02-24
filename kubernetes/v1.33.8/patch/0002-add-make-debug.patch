@@ -1,0 +1,17 @@
+diff --git a/build/root/Makefile b/build/root/Makefile
+index f463cd96..28029f2c 100644
+--- a/build/root/Makefile
++++ b/build/root/Makefile
+@@ -97,6 +97,12 @@ all:
+ 	hack/make-rules/build.sh $(WHAT)
+ endif
+ 
++.PHONY: debug
++debug: DBG = 1
++debug: GOFLAGS += -buildvcs=false
++debug:
++	hack/make-rules/build.sh $(WHAT)
++
+ define GINKGO_HELP_INFO
+ # Build ginkgo
+ #
