@@ -1,0 +1,103 @@
+name: docker
+columns:
+- available dlv
+- note
+versions:
+- version: v28.0.4
+  artifacts:
+  - binary: dockerd-v28.0.4-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-1818-g65120d586b
+  artifacts:
+  - binary: dockerd-v27.0.1-1818-g65120d586b-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-1817-gb3b9e990ee
+  artifacts:
+  - binary: dockerd-v27.0.1-1817-gb3b9e990ee-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-945-ge46e159001
+  artifacts:
+  - binary: dockerd-v27.0.1-945-ge46e159001-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-917-g29e5bfb0f0
+  artifacts:
+  - binary: dockerd-v27.0.1-917-g29e5bfb0f0-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-901-g73fabd5a21
+  artifacts:
+  - binary: dockerd-v27.0.1-901-g73fabd5a21-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-890-ga715ccaaa3
+  artifacts:
+  - binary: dockerd-v27.0.1-890-ga715ccaaa3-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-889-g933fcc9814
+  artifacts:
+  - binary: dockerd-v27.0.1-889-g933fcc9814-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-889-g035b8afe04
+  artifacts:
+  - binary: dockerd-v27.0.1-889-g035b8afe04-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-885-g816dbbfddc
+  artifacts:
+  - binary: dockerd-v27.0.1-885-g816dbbfddc-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-826-g8eba9bfa64
+  artifacts:
+  - binary: dockerd-v27.0.1-826-g8eba9bfa64-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-688-g87390ae849
+  artifacts:
+  - binary: dockerd-v27.0.1-688-g87390ae849-debug
+    available_dlv: ''
+    note: ''
+- version: v27.0.1-484-g92195c1333
+  artifacts:
+  - binary: dockerd-v27.0.1-484-g92195c1333-debug
+    available_dlv: ''
+    note: ''
+- version: v19.03.13
+  artifacts:
+  - binary: dockerd-v19.03.13-debug
+    available_dlv: ''
+    note: ''
+- version: v1.12.3-rc1
+  artifacts:
+  - binary: dockerd-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+  - binary: docker-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+  - binary: docker-containerd-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+  - binary: docker-containerd-shim-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+  - binary: docker-containerd-ctr-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+  - binary: docker-proxy-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+  - binary: docker-runc-v1.12.3-rc1-debug
+    available_dlv: ''
+    note: ''
+- version: v0.7.1
+  artifacts:
+  - binary: docker-v0.7.1-debug
+    available_dlv: ''
+    note: ''

@@ -1,0 +1,15 @@
+name: kubernetes
+columns:
+- dlv
+- note
+versions:
+- version: v1.33.8
+  artifacts:
+  - binary: kubelet-v1.33.8-debug
+    dlv: ''
+    note: ''
+- version: v1.32.2
+  artifacts:
+  - binary: kubelet-v1.32.2-debug
+    dlv: v1.24.1~v1.25.2
+    note: ''

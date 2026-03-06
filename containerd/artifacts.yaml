@@ -1,0 +1,199 @@
+name: containerd
+columns:
+- available dlv
+- note
+versions:
+- version: v2.1.1
+  artifacts:
+  - binary: containerd-v2.1.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v2.1.1-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.1.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.1.1-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.1.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.1.1-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.1.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.1.1-debug-flag
+    available_dlv: ''
+    note: ''
+- version: v2.1.0
+  artifacts:
+  - binary: containerd-v2.1.0-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v2.1.0-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.1.0-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.1.0-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.1.0-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.1.0-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.1.0-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.1.0-debug-flag
+    available_dlv: ''
+    note: ''
+- version: v2.0.3
+  artifacts:
+  - binary: containerd-v2.0.3-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v2.0.3-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.0.3-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.0.3-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.0.3-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.0.3-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.0.3-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.0.3-debug-flag
+    available_dlv: ''
+    note: ''
+- version: v1.6.27
+  artifacts:
+  - binary: containerd-shim-runc-v1-v1.6.27-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v1-v1.6.27-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v1.6.27-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v1.6.27-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v1.6.27-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v1.6.27-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v1.6.27-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v1.6.27-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v1.6.27-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v1.6.27-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v1.6.27-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v1.6.27-debug-flag
+    available_dlv: ''
+    note: ''
+- version: v1.3.7
+  artifacts:
+  - binary: containerd-shim-runc-v1-v1.3.7-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v1-v1.3.7-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v1.3.7-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v1.3.7-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v1.3.7-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v1.3.7-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v1.3.7-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v1.3.7-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v1.3.7-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v1.3.7-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v1.3.7-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v1.3.7-debug-flag
+    available_dlv: ''
+    note: ''
+- version: v0.2.9
+  artifacts:
+  - binary: containerd-v0.2.9-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v0.2.9-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v0.2.9-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v0.2.9-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v0.2.9-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v0.2.9-debug-flag
+    available_dlv: ''
+    note: ''
+- version: v0.2.4
+  artifacts:
+  - binary: containerd-v0.2.4-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v0.2.4-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v0.2.4-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-v0.2.4-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v0.2.4-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v0.2.4-debug-flag
+    available_dlv: ''
+    note: ''

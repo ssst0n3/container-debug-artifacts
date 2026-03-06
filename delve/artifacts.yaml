@@ -1,0 +1,169 @@
+name: dlv
+version_link: false
+columns:
+- note
+versions:
+- version: v1.26.0
+  artifacts:
+  - binary: dlv-v1.26.0
+    note: ''
+- version: v1.25.2
+  artifacts:
+  - binary: dlv-v1.25.2
+    note: ''
+- version: v1.25.1
+  artifacts:
+  - binary: dlv-v1.25.1
+    note: ''
+- version: v1.25.0
+  artifacts:
+  - binary: dlv-v1.25.0
+    note: ''
+- version: v1.24.2
+  artifacts:
+  - binary: dlv-v1.24.2
+    note: ''
+- version: v1.24.1
+  artifacts:
+  - binary: dlv-v1.24.1
+    note: ''
+- version: v1.24.0
+  artifacts:
+  - binary: dlv-v1.24.0
+    note: ''
+- version: v1.23.1
+  artifacts:
+  - binary: dlv-v1.23.1
+    note: ''
+- version: v1.23.0
+  artifacts:
+  - binary: dlv-v1.23.0
+    note: ''
+- version: v1.22.1
+  artifacts:
+  - binary: dlv-v1.22.1
+    note: ''
+- version: v1.22.0
+  artifacts:
+  - binary: dlv-v1.22.0
+    note: ''
+- version: v1.21.2
+  artifacts:
+  - binary: dlv-v1.21.2
+    note: ''
+- version: v1.21.1
+  artifacts:
+  - binary: dlv-v1.21.1
+    note: ''
+- version: v1.21.0
+  artifacts:
+  - binary: dlv-v1.21.0
+    note: ''
+- version: v1.20.2
+  artifacts:
+  - binary: dlv-v1.20.2
+    note: ''
+- version: v1.20.1
+  artifacts:
+  - binary: dlv-v1.20.1
+    note: ''
+- version: v1.20.0
+  artifacts:
+  - binary: dlv-v1.20.0
+    note: ''
+- version: v1.9.1
+  artifacts:
+  - binary: dlv-v1.9.1
+    note: ''
+- version: v1.9.0
+  artifacts:
+  - binary: dlv-v1.9.0
+    note: ''
+- version: v1.8.3
+  artifacts:
+  - binary: dlv-v1.8.3
+    note: ''
+- version: v1.8.2
+  artifacts:
+  - binary: dlv-v1.8.2
+    note: ''
+- version: v1.8.1
+  artifacts:
+  - binary: dlv-v1.8.1
+    note: ''
+- version: v1.8.0
+  artifacts:
+  - binary: dlv-v1.8.0
+    note: ''
+- version: v1.7.3
+  artifacts:
+  - binary: dlv-v1.7.3
+    note: ''
+- version: v1.7.2
+  artifacts:
+  - binary: dlv-v1.7.2
+    note: ''
+- version: v1.7.1
+  artifacts:
+  - binary: dlv-v1.7.1
+    note: ''
+- version: v1.7.0
+  artifacts:
+  - binary: dlv-v1.7.0
+    note: ''
+- version: v1.6.1
+  artifacts:
+  - binary: dlv-v1.6.1
+    note: ''
+- version: v1.6.0
+  artifacts:
+  - binary: dlv-v1.6.0
+    note: ''
+- version: v1.5.1
+  artifacts:
+  - binary: dlv-v1.5.1
+    note: ''
+- version: v1.5.0-fix-2168
+  artifacts:
+  - binary: dlv-v1.5.0-fix-2168
+    note: v1.5.0+85952c0
+- version: v1.5.0-85952c0
+  artifacts:
+  - binary: dlv-v1.5.0-85952c0
+    note: 85952c0
+- version: v1.5.0
+  artifacts:
+  - binary: dlv-v1.5.0
+    note: ''
+- version: v1.4.1
+  artifacts:
+  - binary: dlv-v1.4.1
+    note: ''
+- version: v1.4.0
+  artifacts:
+  - binary: dlv-v1.4.0
+    note: ''
+- version: v1.3.2
+  artifacts:
+  - binary: dlv-v1.3.2
+    note: ''
+- version: v1.3.1
+  artifacts:
+  - binary: dlv-v1.3.1
+    note: ''
+- version: v1.3.0
+  artifacts:
+  - binary: dlv-v1.3.0
+    note: ''
+- version: v1.2.0
+  artifacts:
+  - binary: dlv-v1.2.0
+    note: ''
+- version: v1.1.0
+  artifacts:
+  - binary: dlv-v1.1.0
+    note: ''
+- version: v1.0.0
+  artifacts:
+  - binary: dlv-v1.0.0
+    note: ''

@@ -1,0 +1,10 @@
+name: podman
+columns:
+- available dlv
+- note
+versions:
+- version: v5.5.1
+  artifacts:
+  - binary: podman-v5.5.1-debug
+    available_dlv: ''
+    note: ''

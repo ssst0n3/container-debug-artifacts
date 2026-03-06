@@ -1,0 +1,65 @@
+name: nvidia-container-toolkit
+columns:
+- available dlv
+- note
+versions:
+- version: v1.17.6
+  artifacts:
+  - binary: nvidia-cdi-hook-v1.17.6-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime-hook-v1.17.6-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime-v1.17.6-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime.cdi-v1.17.6-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime.legacy-v1.17.6-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-ctk-v1.17.6-debug
+    available_dlv: ''
+    note: ''
+- version: v1.17.5
+  artifacts:
+  - binary: nvidia-cdi-hook-v1.17.5-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime-hook-v1.17.5-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime-v1.17.5-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime.cdi-v1.17.5-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime.legacy-v1.17.5-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-ctk-v1.17.5-debug
+    available_dlv: ''
+    note: ''
+- version: v1.16.1
+  artifacts:
+  - binary: nvidia-cdi-hook-v1.16.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime-hook-v1.16.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime-v1.16.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime.cdi-v1.16.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-container-runtime.legacy-v1.16.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: nvidia-ctk-v1.16.1-debug
+    available_dlv: ''
+    note: ''
