@@ -245,6 +245,7 @@ Next step:
 | version | binary | dlv | note |
 | --- | --- | --- | --- |
 | [v1.33.8](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.33.8) | [kubelet-v1.33.8-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.33.8-debug) |
+| [v1.32.2](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.32.2) | [kubelet-v1.32.2-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.32.2-debug) |
 
 ## podman
 
