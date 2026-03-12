@@ -293,6 +293,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 
 | version | binary | dlv | note |
 | --- | --- | --- | --- |
+| [v1.35.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.35.1) | [kubelet-v1.35.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.35.1-debug) |  |  |
 | [v1.33.8](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.33.8) | [kubelet-v1.33.8-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.33.8-debug) |  |  |
 | [v1.32.2](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.32.2) | [kubelet-v1.32.2-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.32.2-debug) | v1.24.1~v1.25.2 |  |
 
