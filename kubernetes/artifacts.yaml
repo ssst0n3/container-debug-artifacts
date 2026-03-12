@@ -6,7 +6,7 @@ versions:
 - version: v1.35.1
   artifacts:
   - binary: kubelet-v1.35.1-debug
-    dlv: ''
+    dlv: v1.25.1~v1.26.1
     note: ''
 - version: v1.33.8
   artifacts:

@@ -41,7 +41,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 <details>
 <summary>Show runc artifact table</summary>
 
-| version | binary | available dlv | note |
+| version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
 | [v1.3.0](https://github.com/ssst0n3/container-debug-artifacts/tree/main/runc/v1.3.0) | [runc-v1.3.0-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.3.0-debug) |  |  |
 |  | [runc-v1.3.0-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/runc/runc-v1.3.0-debug-flag) |  |  |
@@ -189,7 +189,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 <details>
 <summary>Show containerd artifact table</summary>
 
-| version | binary | available dlv | note |
+| version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
 | [v2.1.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v2.1.1) | [containerd-v2.1.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.1.1-debug) |  |  |
 |  | [containerd-v2.1.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.1.1-debug-flag) |  |  |
@@ -259,7 +259,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 <details>
 <summary>Show docker artifact table</summary>
 
-| version | binary | available dlv | note |
+| version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
 | [v28.0.4](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v28.0.4) | [dockerd-v28.0.4-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v28.0.4-debug) |  |  |
 | [v27.0.1-1818-g65120d586b](https://github.com/ssst0n3/container-debug-artifacts/tree/main/docker/v27.0.1-1818-g65120d586b) | [dockerd-v27.0.1-1818-g65120d586b-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/docker/dockerd-v27.0.1-1818-g65120d586b-debug) |  |  |
@@ -291,9 +291,9 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 <details>
 <summary>Show kubernetes artifact table</summary>
 
-| version | binary | dlv | note |
+| version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
-| [v1.35.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.35.1) | [kubelet-v1.35.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.35.1-debug) |  |  |
+| [v1.35.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.35.1) | [kubelet-v1.35.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.35.1-debug) | v1.25.1~v1.26.1 |  |
 | [v1.33.8](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.33.8) | [kubelet-v1.33.8-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.33.8-debug) |  |  |
 | [v1.32.2](https://github.com/ssst0n3/container-debug-artifacts/tree/main/kubernetes/v1.32.2) | [kubelet-v1.32.2-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/kubernetes/kubelet-v1.32.2-debug) | v1.24.1~v1.25.2 |  |
 
@@ -304,7 +304,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 <details>
 <summary>Show podman artifact table</summary>
 
-| version | binary | available dlv | note |
+| version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
 | [v5.5.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/podman/v5.5.1) | [podman-v5.5.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/podman/podman-v5.5.1-debug) |  |  |
 
@@ -315,7 +315,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 <details>
 <summary>Show nvidia-container-toolkit artifact table</summary>
 
-| version | binary | available dlv | note |
+| version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
 | [v1.17.6](https://github.com/ssst0n3/container-debug-artifacts/tree/main/nvidia-container-toolkit/v1.17.6) | [nvidia-cdi-hook-v1.17.6-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-cdi-hook-v1.17.6-debug) |  |  |
 |  | [nvidia-container-runtime-hook-v1.17.6-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/nvidia-container-toolkit/nvidia-container-runtime-hook-v1.17.6-debug) |  |  |
