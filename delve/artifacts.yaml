@@ -3,6 +3,10 @@ version_link: false
 columns:
 - note
 versions:
+- version: v1.26.1
+  artifacts:
+  - binary: dlv-v1.26.1
+    note: ''
 - version: v1.26.0
   artifacts:
   - binary: dlv-v1.26.0

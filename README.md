@@ -345,6 +345,7 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 
 | version | binary | note |
 | --- | --- | --- |
+| v1.26.1 | [dlv-v1.26.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.26.1) |  |
 | v1.26.0 | [dlv-v1.26.0](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.26.0) |  |
 | v1.25.2 | [dlv-v1.25.2](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.25.2) |  |
 | v1.25.1 | [dlv-v1.25.1](https://github.com/ssst0n3/container-debug-artifacts/releases/download/dlv/dlv-v1.25.1) |  |
