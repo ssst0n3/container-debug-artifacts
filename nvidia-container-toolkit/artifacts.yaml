@@ -1,6 +1,6 @@
 name: nvidia-container-toolkit
 columns:
-- available dlv
+- Tested dlv
 - note
 versions:
 - version: v1.17.6

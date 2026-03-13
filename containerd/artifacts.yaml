@@ -1,8 +1,34 @@
 name: containerd
 columns:
-- available dlv
+- Tested dlv
 - note
 versions:
+- version: v2.2.1
+  artifacts:
+  - binary: containerd-v2.2.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-v2.2.1-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.2.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: ctr-v2.2.1-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.2.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-shim-runc-v2-v2.2.1-debug-flag
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.2.1-debug
+    available_dlv: ''
+    note: ''
+  - binary: containerd-stress-v2.2.1-debug-flag
+    available_dlv: ''
+    note: ''
 - version: v2.1.1
   artifacts:
   - binary: containerd-v2.1.1-debug

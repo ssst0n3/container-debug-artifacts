@@ -1,6 +1,6 @@
 name: runc
 columns:
-- available dlv
+- Tested dlv
 - note
 versions:
 - version: v1.3.0

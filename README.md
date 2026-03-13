@@ -191,6 +191,14 @@ Prebuilt debug binaries and patch workflows for container runtimes.
 
 | version | binary | Tested dlv | note |
 | --- | --- | --- | --- |
+| [v2.2.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v2.2.1) | [containerd-v2.2.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.2.1-debug) |  |  |
+|  | [containerd-v2.2.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.2.1-debug-flag) |  |  |
+|  | [ctr-v2.2.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v2.2.1-debug) |  |  |
+|  | [ctr-v2.2.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v2.2.1-debug-flag) |  |  |
+|  | [containerd-shim-runc-v2-v2.2.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v2.2.1-debug) |  |  |
+|  | [containerd-shim-runc-v2-v2.2.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-shim-runc-v2-v2.2.1-debug-flag) |  |  |
+|  | [containerd-stress-v2.2.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-stress-v2.2.1-debug) |  |  |
+|  | [containerd-stress-v2.2.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-stress-v2.2.1-debug-flag) |  |  |
 | [v2.1.1](https://github.com/ssst0n3/container-debug-artifacts/tree/main/containerd/v2.1.1) | [containerd-v2.1.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.1.1-debug) |  |  |
 |  | [containerd-v2.1.1-debug-flag](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/containerd-v2.1.1-debug-flag) |  |  |
 |  | [ctr-v2.1.1-debug](https://github.com/ssst0n3/container-debug-artifacts/releases/download/containerd/ctr-v2.1.1-debug) |  |  |
