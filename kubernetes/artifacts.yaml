@@ -1,6 +1,6 @@
 name: kubernetes
 columns:
-- dlv
+- Tested dlv
 - note
 versions:
 - version: v1.35.1

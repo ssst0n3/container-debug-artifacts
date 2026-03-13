@@ -35,6 +35,18 @@ def normalize_column(column: str) -> str:
     return column.lower().replace(" ", "_")
 
 
+def get_column_value(artifact: dict, column: str) -> str:
+    key = normalize_column(column)
+    if key == "tested_dlv":
+        if "tested_dlv" in artifact:
+            return artifact.get("tested_dlv", "")
+        if "available_dlv" in artifact:
+            return artifact.get("available_dlv", "")
+        if "dlv" in artifact:
+            return artifact.get("dlv", "")
+    return artifact.get(key, "")
+
+
 def derive_binary_url(component: str, binary: str) -> str:
     if not binary or binary == "-":
         return ""
@@ -76,7 +88,7 @@ def render_component(component: dict) -> str:
             binary = artifact.get("binary", "")
             rendered.append(render_link(binary, derive_binary_url(name, binary)))
             for column in columns:
-                rendered.append(artifact.get(normalize_column(column), ""))
+                rendered.append(get_column_value(artifact, column))
             lines.append("| " + " | ".join(rendered) + " |")
 
     lines.extend(["", "</details>", ""])

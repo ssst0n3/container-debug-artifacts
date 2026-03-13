@@ -1,6 +1,6 @@
 name: docker
 columns:
-- available dlv
+- Tested dlv
 - note
 versions:
 - version: v28.0.4
